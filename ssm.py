@@ -18,7 +18,7 @@ class LSTMModel(nn.Module):
 
 
 class StateSpaceModel(nn.Module):
-    def __init__(self, a_dim, z_dim, K):
+    def __init__(self, a_dim, z_dim, K, Q_reg=1e-3, R_reg=1e-3):
         
         super(StateSpaceModel, self).__init__()
         
@@ -30,6 +30,8 @@ class StateSpaceModel(nn.Module):
         self.mat_C_K = nn.Parameter(torch.randn(K, a_dim, z_dim))
         self.mat_Q_L = nn.Parameter(torch.randn(z_dim, z_dim))
         self.mat_R_L = nn.Parameter(torch.randn(a_dim, a_dim))
+        self.Q_reg = Q_reg
+        self.R_reg = R_reg
         
         self.weight_model = LSTMModel(a_dim, K)
         # input shape: (sequence_length, batch_size, a_dim)
@@ -38,12 +40,12 @@ class StateSpaceModel(nn.Module):
     @property
     def mat_Q(self):
         # shape: (z_dim, z_dim)
-        return self.mat_Q_L @ self.mat_Q_L.T
+        return self.mat_Q_L @ self.mat_Q_L.T + torch.eye(self.z_dim)*self.Q_reg
     
     @property
     def mat_R(self):
         # shape: (a_dim, a_dim)
-        return self.mat_R_L @ self.mat_R_L.T
+        return self.mat_R_L @ self.mat_R_L.T + torch.eye(self.a_dim)*self.R_reg
     
     def kalman_filter(self, as_):
         # as_: a_0, a_1, ..., a_{T-1}
