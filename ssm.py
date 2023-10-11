@@ -47,7 +47,7 @@ class StateSpaceModel(nn.Module):
         # shape: (a_dim, a_dim)
         return self.mat_R_L @ self.mat_R_L.T + torch.eye(self.a_dim)*self.R_reg
     
-    def kalman_filter(self, as_):
+    def kalman_filter(self, as_, initial_std=1.0):
         # as_: a_0, a_1, ..., a_{T-1}
         
         sequence_length, batch_size = as_.size()[:2]
@@ -55,7 +55,7 @@ class StateSpaceModel(nn.Module):
         # Initial state estimate: \hat{z}_{0|-1}
         mean_t_plus = torch.zeros(batch_size, self.z_dim, 1)
         # Initial state covariance: \Sigma_{0|-1}
-        cov_t_plus = (torch.eye(self.z_dim)*1e9).unsqueeze(0).repeat(batch_size, 1, 1)  
+        cov_t_plus = (torch.eye(self.z_dim)*initial_std**2).unsqueeze(0).repeat(batch_size, 1, 1)  
         
         weights = self.weight_model(as_)
         # Shape of weights is (sequence_length, batch_size, K)
@@ -111,10 +111,10 @@ class StateSpaceModel(nn.Module):
         for t in reversed(range(sequence_length - 1)):
 
             # J_{T-2}, J_{T-3}, ..., J_0
-            J_t = filter_covariances[t] @ mat_As[t].transpose(1, 2) @ torch.inverse(filter_next_covariances[t])
+            J_t = filter_covariances[t] @ mat_As[t+1].transpose(1, 2) @ torch.inverse(filter_next_covariances[t])
             
             # \hat{z}_{T-2}, \hat{z}_{T-3}, ..., \hat{z}_0
-            mean_t = filter_means[t] + J_t @ (means[0] - filter_next_means[t])
+            mean_t = filter_means[t] + J_t @ (means[0] - filter_next_means[0])
             # \Sigma_{T-2}, \Sigma_{T-3}, ..., \Sigma_0
             cov_t = filter_covariances[t] + J_t @ (covariances[0] - filter_next_covariances[t]) @ J_t.transpose(1, 2)
 
