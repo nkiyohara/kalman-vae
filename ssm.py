@@ -190,7 +190,7 @@ class StateSpaceModel(nn.Module):
         return torch.stack(means), torch.stack(covariances)
 
     def state_transition_log_likelihood(self, zs, mat_As):
-        sequence_length, batch_size, _ = zs.size()
+        sequence_length, batch_size, _, _ = zs.size()
 
         # Initial state estimate: \hat{z}_{0|-1}
         mean_t_plus = (
