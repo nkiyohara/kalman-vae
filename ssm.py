@@ -90,8 +90,13 @@ class StateSpaceModel(nn.Module):
 
             # \Sigma_{0|0}, \Sigma_{1|1}, ..., \Sigma_{T-1|T-1}
             cov_t = cov_t_plus - K_t @ mat_Cs[t] @ cov_t_plus  # Updated state covariance
+
+            cov_t = (cov_t + cov_t.transpose(1, 2)) / 2.0  # Symmetrize
+
             # \Sigma_{1|0}, \Sigma_{2|1}, ..., \Sigma_{T|T-1}
             cov_t_plus = mat_As[t] @ cov_t @ mat_As[t].transpose(1, 2) + self.mat_Q  # Predicted state covariance
+
+            cov_t_plus = (cov_t_plus + cov_t_plus.transpose(1, 2)) / 2.0  # Symmetrize
 
             means.append(mean_t)
             covariances.append(cov_t)
@@ -117,6 +122,8 @@ class StateSpaceModel(nn.Module):
             mean_t = filter_means[t] + J_t @ (means[0] - filter_next_means[0])
             # \Sigma_{T-2}, \Sigma_{T-3}, ..., \Sigma_0
             cov_t = filter_covariances[t] + J_t @ (covariances[0] - filter_next_covariances[t]) @ J_t.transpose(1, 2)
+
+            cov_t = (cov_t + cov_t.transpose(1, 2)) / 2.0  # Symmetrize
 
             means.insert(0, mean_t)
             covariances.insert(0, cov_t)

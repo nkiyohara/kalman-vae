@@ -20,7 +20,7 @@ class KalmanVariationalAutoencoder(nn.Module):
         self.a_dim = a_dim
         self.z_dim = z_dim
     
-    def objective(self, xs):
+    def elbo(self, xs):
         seq_length = xs.shape[0]
         batch_size = xs.shape[1]
         
@@ -60,8 +60,8 @@ class KalmanVariationalAutoencoder(nn.Module):
         objective = reconstruction_obj + regularization_obj + kalman_reconst_obj + gamma_obj
         
         return objective, {
-            'reconstruction': reconstruction_obj,
-            'regularization': regularization_obj,
-            'kalman_reconst': kalman_reconst_obj,
-            'gamma': gamma_obj
+            'reconstruction': reconstruction_obj.detach().numpy(),
+            'regularization': regularization_obj.detach().numpy(),
+            'kalman_reconst': kalman_reconst_obj.detach().numpy(),
+            'gamma': gamma_obj.detach().numpy()
         }
