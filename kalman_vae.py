@@ -75,20 +75,25 @@ class KalmanVariationalAutoencoder(nn.Module):
         zs_sample = zs_sample.view(seq_length, batch_size, self.z_dim, 1)
 
         # ln p_\gamma(a|z)
-        kalman_reconst_distrib = D.MultivariateNormal(
+        kalman_observation_distrib = D.MultivariateNormal(
             (mat_Cs @ zs_sample).view(-1, self.a_dim), self.state_space_model.mat_R
         )
-        kalman_reconst_obj = (
-            kalman_reconst_distrib.log_prob(as_sample.view(-1, self.a_dim))
+        kalman_observation_log_likelihood = (
+            kalman_observation_distrib.log_prob(as_sample.view(-1, self.a_dim))
             .view(seq_length, batch_size, -1)
             .sum(0)
             .mean(0)
             .sum()
         )
 
-        # -ln p_\gamma(z|a)
-        gamma_obj = (
-            -zs_distrib.log_prob(zs_sample.view(-1, self.z_dim))
+        # ln p_\gamma(z)
+        kalman_state_transition_log_likelihood = (
+            self.state_space_model.state_transition_log_likelihood(zs_sample, mat_As)
+        )
+
+        # ln p_\gamma(z|a)
+        kalman_posterior_log_likelihood = (
+            zs_distrib.log_prob(zs_sample.view(-1, self.z_dim))
             .view(seq_length, batch_size, -1)
             .sum(0)
             .mean(0)
@@ -96,12 +101,17 @@ class KalmanVariationalAutoencoder(nn.Module):
         )
 
         objective = (
-            reconstruction_obj + regularization_obj + kalman_reconst_obj + gamma_obj
+            reconstruction_obj
+            + regularization_obj
+            + kalman_observation_log_likelihood
+            + kalman_state_transition_log_likelihood
+            - kalman_posterior_log_likelihood
         )
 
         return objective, {
             "reconstruction": reconstruction_obj.detach().numpy(),
             "regularization": regularization_obj.detach().numpy(),
-            "kalman_reconst": kalman_reconst_obj.detach().numpy(),
-            "gamma": gamma_obj.detach().numpy(),
+            "kalman_observation_log_likelihood": kalman_observation_log_likelihood.detach().numpy(),
+            "kalman_state_transition_log_likelihood": kalman_state_transition_log_likelihood.detach().numpy(),
+            "kalman_posterior_log_likelihood": kalman_posterior_log_likelihood.detach().numpy(),
         }

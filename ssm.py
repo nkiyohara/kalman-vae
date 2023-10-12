@@ -1,4 +1,5 @@
 import torch
+import torch.distributions as D
 import torch.nn as nn
 import torch.nn.functional as F
 
@@ -18,7 +19,16 @@ class LSTMModel(nn.Module):
 
 
 class StateSpaceModel(nn.Module):
-    def __init__(self, a_dim, z_dim, K, Q_reg=1e-3, R_reg=1e-3):
+    def __init__(
+        self,
+        a_dim,
+        z_dim,
+        K,
+        Q_reg=1e-3,
+        R_reg=1e-3,
+        initial_state_mean=None,
+        initial_state_covariance=None,
+    ):
         super(StateSpaceModel, self).__init__()
 
         self.a_dim = a_dim
@@ -31,6 +41,28 @@ class StateSpaceModel(nn.Module):
         self.mat_R_L = nn.Parameter(torch.randn(a_dim, a_dim))
         self.Q_reg = Q_reg
         self.R_reg = R_reg
+
+        if initial_state_mean is None:
+            self.initial_state_mean = torch.zeros(z_dim)
+        else:
+            if initial_state_mean.shape != (z_dim,):
+                raise ValueError(
+                    "initial_state_mean must have shape (z_dim,), got {}".format(
+                        initial_state_mean.shape
+                    )
+                )
+            self.initial_state_mean = initial_state_mean
+
+        if initial_state_covariance is None:
+            self.initial_state_covariance = torch.eye(z_dim)
+        else:
+            if initial_state_covariance.shape != (z_dim, z_dim):
+                raise ValueError(
+                    "initial_state_covariance must have shape (z_dim, z_dim), got {}".format(
+                        initial_state_covariance.shape
+                    )
+                )
+            self.initial_state_covariance = initial_state_covariance
 
         self.weight_model = LSTMModel(a_dim, K)
         # input shape: (sequence_length, batch_size, a_dim)
@@ -46,21 +78,21 @@ class StateSpaceModel(nn.Module):
         # shape: (a_dim, a_dim)
         return self.mat_R_L @ self.mat_R_L.T + torch.eye(self.a_dim) * self.R_reg
 
-    def kalman_filter(self, as_, initial_std=1.0):
+    def kalman_filter(self, as_):
         # as_: a_0, a_1, ..., a_{T-1}
 
         sequence_length, batch_size = as_.size()[:2]
 
         # Initial state estimate: \hat{z}_{0|-1}
-        mean_t_plus = torch.zeros(batch_size, self.z_dim, 1)
-        # Initial state covariance: \Sigma_{0|-1}
-        cov_t_plus = (
-            (torch.eye(self.z_dim) * initial_std**2)
-            .unsqueeze(0)
-            .repeat(batch_size, 1, 1)
+        mean_t_plus = (
+            self.initial_state_mean.unsqueeze(0).repeat(batch_size, 1).unsqueeze(2)
         )
 
+        # Initial state covariance: \Sigma_{0|-1}
+        cov_t_plus = self.initial_state_covariance.unsqueeze(0).repeat(batch_size, 1, 1)
+
         weights = self.weight_model(as_)
+
         # Shape of weights is (sequence_length, batch_size, K)
         # Shape of mat_As and mat_Cs is (sequence_length, batch_size, z_dim, z_dim)
         # A_0, A_1, ..., A_{T-1}
@@ -156,3 +188,40 @@ class StateSpaceModel(nn.Module):
             covariances.insert(0, cov_t)
 
         return torch.stack(means), torch.stack(covariances)
+
+    def state_transition_log_likelihood(self, zs, mat_As):
+        sequence_length, batch_size, _ = zs.size()
+
+        # Initial state estimate: \hat{z}_{0|-1}
+        mean_t_plus = (
+            self.initial_state_mean.unsqueeze(0).repeat(batch_size, 1).unsqueeze(2)
+        )
+
+        # Initial state covariance: \Sigma_{0|-1}
+        cov_t_plus = self.initial_state_covariance.unsqueeze(0).repeat(batch_size, 1, 1)
+
+        state_transition_log_likelihood = 0.0
+
+        for t in range(sequence_length):
+            if not torch.isnan(zs[t]).any():
+                distrib = D.MultivariateNormal(
+                    mean_t_plus.view(-1, self.z_dim), cov_t_plus
+                )
+                state_transition_log_likelihood += distrib.log_prob(
+                    zs[t].view(-1, self.z_dim)
+                ).sum()
+
+                mean_t_plus = mat_As[t] @ zs[t]
+                cov_t_plus = (
+                    mat_As[t] @ cov_t_plus @ mat_As[t].transpose(1, 2) + self.mat_Q
+                )
+                cov_t_plus = (cov_t_plus + cov_t_plus.transpose(1, 2)) / 2.0
+
+            else:
+                mean_t_plus = mat_As[t] @ mean_t_plus
+                cov_t_plus = (
+                    mat_As[t] @ cov_t_plus @ mat_As[t].transpose(1, 2) + self.mat_Q
+                )
+                cov_t_plus = (cov_t_plus + cov_t_plus.transpose(1, 2)) / 2.0
+
+        return state_transition_log_likelihood
