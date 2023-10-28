@@ -203,25 +203,22 @@ class StateSpaceModel(nn.Module):
         state_transition_log_likelihood = 0.0
 
         for t in range(sequence_length):
-            if not torch.isnan(zs[t]).any():
-                distrib = D.MultivariateNormal(
-                    mean_t_plus.view(-1, self.z_dim), cov_t_plus
-                )
-                state_transition_log_likelihood += distrib.log_prob(
-                    zs[t].view(-1, self.z_dim)
-                ).sum()
 
-                mean_t_plus = mat_As[t] @ zs[t]
-                cov_t_plus = (
-                    mat_As[t] @ cov_t_plus @ mat_As[t].transpose(1, 2) + self.mat_Q
-                )
-                cov_t_plus = (cov_t_plus + cov_t_plus.transpose(1, 2)) / 2.0
+            distrib = D.MultivariateNormal(
+                mean_t_plus.view(-1, self.z_dim), cov_t_plus
+            )
+            state_transition_log_likelihood += distrib.log_prob(
+                zs[t].view(-1, self.z_dim)
+            ).sum()
 
-            else:
-                mean_t_plus = mat_As[t] @ mean_t_plus
-                cov_t_plus = (
-                    mat_As[t] @ cov_t_plus @ mat_As[t].transpose(1, 2) + self.mat_Q
-                )
-                cov_t_plus = (cov_t_plus + cov_t_plus.transpose(1, 2)) / 2.0
+            mean_t_plus = mat_As[t] @ zs[t]
+            cov_t_plus = self.mat_Q
+
+            # else:
+            #     mean_t_plus = mat_As[t] @ mean_t_plus
+            #     cov_t_plus = (
+            #         mat_As[t] @ cov_t_plus @ mat_As[t].transpose(1, 2) + self.mat_Q
+            #     )
+            #     cov_t_plus = (cov_t_plus + cov_t_plus.transpose(1, 2)) / 2.0
 
         return state_transition_log_likelihood
