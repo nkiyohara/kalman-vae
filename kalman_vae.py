@@ -27,13 +27,13 @@ class KalmanVariationalAutoencoder(nn.Module):
         seq_length = xs.shape[0]
         batch_size = xs.shape[1]
 
-        as_dist = self.encoder(xs.view(-1, *xs.shape[2:]))
+        as_dist = self.encoder(xs.reshape(-1, *xs.shape[2:]))
         as_sample = as_dist.rsample().view(seq_length, batch_size, self.a_dim)
 
         # Reconstruction objective
         xs_dist = self.decoder(as_sample.view(-1, self.a_dim))
         reconstruction_obj = (
-            xs_dist.log_prob(xs.view(-1, *xs.shape[2:])).sum(0).mean(0).sum()
+            xs_dist.log_prob(xs.reshape(-1, *xs.shape[2:])).sum(0).mean(0).sum()
         )
 
         # Regularization objective
