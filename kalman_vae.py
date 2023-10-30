@@ -115,4 +115,3 @@ class KalmanVariationalAutoencoder(nn.Module):
             "kalman_state_transition_log_likelihood": kalman_state_transition_log_likelihood.detach().numpy(),
             "kalman_posterior_log_likelihood": kalman_posterior_log_likelihood.detach().numpy(),
         }
-    

@@ -203,10 +203,7 @@ class StateSpaceModel(nn.Module):
         state_transition_log_likelihood = 0.0
 
         for t in range(sequence_length):
-
-            distrib = D.MultivariateNormal(
-                mean_t_plus.view(-1, self.z_dim), cov_t_plus
-            )
+            distrib = D.MultivariateNormal(mean_t_plus.view(-1, self.z_dim), cov_t_plus)
             state_transition_log_likelihood += distrib.log_prob(
                 zs[t].view(-1, self.z_dim)
             ).sum()
