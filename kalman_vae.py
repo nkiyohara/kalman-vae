@@ -19,7 +19,7 @@ class KalmanVariationalAutoencoder(nn.Module):
             self.decoder = BernoulliDecoder(a_dim, image_size, image_channels)
         else:
             raise ValueError("Unknown decoder type: {}".format(decoder_type))
-        self.state_space_model = StateSpaceModel(a_dim, z_dim, K)
+        self.state_space_model = StateSpaceModel(a_dim=a_dim, z_dim=z_dim, K=K)
         self.a_dim = a_dim
         self.z_dim = z_dim
 
@@ -115,3 +115,4 @@ class KalmanVariationalAutoencoder(nn.Module):
             "kalman_state_transition_log_likelihood": kalman_state_transition_log_likelihood.detach().numpy(),
             "kalman_posterior_log_likelihood": kalman_posterior_log_likelihood.detach().numpy(),
         }
+    
