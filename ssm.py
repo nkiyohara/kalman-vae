@@ -39,10 +39,10 @@ class StateSpaceModel(nn.Module):
         self.z_dim = z_dim
         self.K = K
 
-        self.mat_A_K = nn.Parameter(torch.randn(K, z_dim, z_dim))
-        self.mat_C_K = nn.Parameter(torch.randn(K, a_dim, z_dim))
-        self.mat_Q_L = nn.Parameter(torch.randn(z_dim, z_dim))
-        self.mat_R_L = nn.Parameter(torch.randn(a_dim, a_dim))
+        self._mat_A_K = nn.Parameter(torch.randn(K, z_dim, z_dim))
+        self._mat_C_K = nn.Parameter(torch.randn(K, a_dim, z_dim))
+        self._mat_Q_L = nn.Parameter(torch.randn(z_dim, z_dim))
+        self._mat_R_L = nn.Parameter(torch.randn(a_dim, a_dim))
         self.Q_reg = Q_reg
         self.R_reg = R_reg
 
@@ -82,15 +82,45 @@ class StateSpaceModel(nn.Module):
         # shape: (a_dim, a_dim)
         return self.mat_R_L @ self.mat_R_L.T + torch.eye(self.a_dim) * self.R_reg
     
+    @property
+    def mat_A_K(self):
+        # shape: (K, z_dim, z_dim)
+        return self._mat_A_K
+    
+    @property
+    def mat_C_K(self):
+        # shape: (K, a_dim, z_dim)
+        return self._mat_C_K
+    
     @mat_Q.setter
     def mat_Q(self, value):
-        self.mat_Q_L = nn.Parameter(torch.cholesky(value))
+        self._mat_Q_L = nn.Parameter(torch.cholesky(value))
         self.Q_reg = 0.0
 
     @mat_R.setter
     def mat_R(self, value):
-        self.mat_R_L = nn.Parameter(torch.cholesky(value))
+        self._mat_R_L = nn.Parameter(torch.cholesky(value))
         self.R_reg = 0.0
+
+    @mat_A_K.setter
+    def mat_A_K(self, value):
+        if value.shape != (self.K, self.z_dim, self.z_dim):
+            raise ValueError(
+                "mat_A_K must have shape (K, z_dim, z_dim), got {}".format(
+                    value.shape
+                )
+            )
+        self._mat_A_K = nn.Parameter(value)
+    
+    @mat_C_K.setter
+    def mat_C_K(self, value):
+        if value.shape != (self.K, self.a_dim, self.z_dim):
+            raise ValueError(
+                "mat_C_K must have shape (K, a_dim, z_dim), got {}".format(
+                    value.shape
+                )
+            )
+        self._mat_C_K = nn.Parameter(value)
 
     def kalman_filter(self, as_, learn_weight_model=True):
         # as_: a_0, a_1, ..., a_{T-1}
