@@ -23,7 +23,7 @@ class KalmanVariationalAutoencoder(nn.Module):
         self.a_dim = a_dim
         self.z_dim = z_dim
 
-    def elbo(self, xs):
+    def elbo(self, xs, reconst_weight=0.3, learn_weight_model=True):
         seq_length = xs.shape[0]
         batch_size = xs.shape[1]
 
@@ -50,7 +50,7 @@ class KalmanVariationalAutoencoder(nn.Module):
             filter_next_covariances,
             mat_As,
             mat_Cs,
-        ) = self.state_space_model.kalman_filter(as_sample)
+        ) = self.state_space_model.kalman_filter(as_sample, learn_weight_model)
         means, covariances = self.state_space_model.kalman_smooth(
             as_sample,
             filter_means,
@@ -101,7 +101,7 @@ class KalmanVariationalAutoencoder(nn.Module):
         )
 
         objective = (
-            reconstruction_obj
+            reconst_weight * reconstruction_obj
             + regularization_obj
             + kalman_observation_log_likelihood
             + kalman_state_transition_log_likelihood
@@ -109,9 +109,11 @@ class KalmanVariationalAutoencoder(nn.Module):
         )
 
         return objective, {
+            "reconst_weight": reconst_weight,
             "reconstruction": reconstruction_obj.detach().numpy(),
             "regularization": regularization_obj.detach().numpy(),
             "kalman_observation_log_likelihood": kalman_observation_log_likelihood.detach().numpy(),
             "kalman_state_transition_log_likelihood": kalman_state_transition_log_likelihood.detach().numpy(),
             "kalman_posterior_log_likelihood": kalman_posterior_log_likelihood.detach().numpy(),
         }
+    
