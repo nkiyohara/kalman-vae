@@ -78,7 +78,7 @@ class StateSpaceModel(nn.Module):
     @property
     def mat_Q(self):
         # shape: (z_dim, z_dim)
-        matrix = self.mat_Q_L @ self.mat_Q_L.T + torch.eye(self.z_dim) * self.Q_reg
+        matrix = self._mat_Q_L @ self._mat_Q_L.T + torch.eye(self.z_dim) * self.Q_reg
         if self.fix_matrices:
             matrix = matrix.detach()
         return matrix
@@ -86,7 +86,7 @@ class StateSpaceModel(nn.Module):
     @property
     def mat_R(self):
         # shape: (a_dim, a_dim)
-        matrix = self.mat_R_L @ self.mat_R_L.T + torch.eye(self.a_dim) * self.R_reg
+        matrix = self._mat_R_L @ self._mat_R_L.T + torch.eye(self.a_dim) * self.R_reg
         if self.fix_matrices:
             matrix = matrix.detach()
         return matrix
@@ -251,7 +251,7 @@ class StateSpaceModel(nn.Module):
             )
 
             # \hat{z}_{T-2}, \hat{z}_{T-3}, ..., \hat{z}_0
-            mean_t = filter_means[t] + J_t @ (means[0] - filter_next_means[0])
+            mean_t = filter_means[t] + J_t @ (means[0] - filter_next_means[t])
             # \Sigma_{T-2}, \Sigma_{T-3}, ..., \Sigma_0
             cov_t = filter_covariances[t] + J_t @ (
                 covariances[0] - filter_next_covariances[t]
