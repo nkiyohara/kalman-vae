@@ -32,6 +32,7 @@ class StateSpaceModel(nn.Module):
         R_reg=1e-3,
         initial_state_mean=None,
         initial_state_covariance=None,
+        fix_matrices=False,
     ):
         super(StateSpaceModel, self).__init__()
 
@@ -45,6 +46,8 @@ class StateSpaceModel(nn.Module):
         self._mat_R_L = nn.Parameter(torch.randn(a_dim, a_dim))
         self.Q_reg = Q_reg
         self.R_reg = R_reg
+
+        self.fix_matrices = fix_matrices
 
         if initial_state_mean is None:
             self.initial_state_mean = torch.zeros(z_dim)
@@ -75,31 +78,53 @@ class StateSpaceModel(nn.Module):
     @property
     def mat_Q(self):
         # shape: (z_dim, z_dim)
-        return self.mat_Q_L @ self.mat_Q_L.T + torch.eye(self.z_dim) * self.Q_reg
+        matrix = self.mat_Q_L @ self.mat_Q_L.T + torch.eye(self.z_dim) * self.Q_reg
+        if self.fix_matrices:
+            matrix = matrix.detach()
+        return matrix
 
     @property
     def mat_R(self):
         # shape: (a_dim, a_dim)
-        return self.mat_R_L @ self.mat_R_L.T + torch.eye(self.a_dim) * self.R_reg
+        matrix = self.mat_R_L @ self.mat_R_L.T + torch.eye(self.a_dim) * self.R_reg
+        if self.fix_matrices:
+            matrix = matrix.detach()
+        return matrix
     
     @property
     def mat_A_K(self):
         # shape: (K, z_dim, z_dim)
-        return self._mat_A_K
+        matrix = self._mat_A_K
+        if self.fix_matrices:
+            matrix = matrix.detach()
+        return matrix
     
     @property
     def mat_C_K(self):
         # shape: (K, a_dim, z_dim)
-        return self._mat_C_K
+        matrix = self._mat_C_K
+        if self.fix_matrices:
+            matrix = matrix.detach()
+        return matrix
     
     @mat_Q.setter
     def mat_Q(self, value):
-        self._mat_Q_L = nn.Parameter(torch.cholesky(value))
+        # shape: (z_dim, z_dim)
+        if value.shape != (self.z_dim, self.z_dim):
+            raise ValueError(
+                "mat_Q must have shape (z_dim, z_dim), got {}".format(value.shape)
+            )
+        self._mat_Q_L = nn.Parameter(torch.linalg.cholesky(value))
         self.Q_reg = 0.0
 
     @mat_R.setter
     def mat_R(self, value):
-        self._mat_R_L = nn.Parameter(torch.cholesky(value))
+        # shape: (a_dim, a_dim)
+        if value.shape != (self.a_dim, self.a_dim):
+            raise ValueError(
+                "mat_R must have shape (a_dim, a_dim), got {}".format(value.shape)
+            )
+        self._mat_R_L = nn.Parameter(torch.linalg.cholesky(value))
         self.R_reg = 0.0
 
     @mat_A_K.setter
