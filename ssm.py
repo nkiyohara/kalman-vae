@@ -5,15 +5,17 @@ import torch.nn.functional as F
 
 
 class LSTMModel(nn.Module):
-    def __init__(self, a_dim, K):
+    def __init__(self, a_dim, K, hidden_dim, num_layers):
         super(LSTMModel, self).__init__()
         self.a_dim = a_dim
         self.K = K
 
-        self.lstm = nn.LSTM(a_dim, K, batch_first=False)
+        self.lstm = nn.LSTM(a_dim, hidden_dim, num_layers=num_layers, batch_first=False)
+        self.linear = nn.Linear(hidden_dim, K)
 
     def forward(self, x):
         x, h = self.lstm(x)
+        x = self.linear(x)
         x = F.softmax(x, dim=-1)
         return x
 
@@ -24,6 +26,8 @@ class StateSpaceModel(nn.Module):
         a_dim,
         z_dim,
         K,
+        hidden_dim=128,
+        num_layers=2,
         Q_reg=1e-3,
         R_reg=1e-3,
         initial_state_mean=None,
@@ -64,7 +68,7 @@ class StateSpaceModel(nn.Module):
                 )
             self.initial_state_covariance = initial_state_covariance
 
-        self.weight_model = LSTMModel(a_dim, K)
+        self.weight_model = LSTMModel(a_dim, K, hidden_dim=hidden_dim, num_layers=num_layers)
         # input shape: (sequence_length, batch_size, a_dim)
         # output shape: (sequence_length, batch_size, K)
 
@@ -77,21 +81,37 @@ class StateSpaceModel(nn.Module):
     def mat_R(self):
         # shape: (a_dim, a_dim)
         return self.mat_R_L @ self.mat_R_L.T + torch.eye(self.a_dim) * self.R_reg
+    
+    @mat_Q.setter
+    def mat_Q(self, value):
+        self.mat_Q_L = nn.Parameter(torch.cholesky(value))
+        self.Q_reg = 0.0
 
-    def kalman_filter(self, as_):
+    @mat_R.setter
+    def mat_R(self, value):
+        self.mat_R_L = nn.Parameter(torch.cholesky(value))
+        self.R_reg = 0.0
+
+    def kalman_filter(self, as_, learn_weight_model=True):
         # as_: a_0, a_1, ..., a_{T-1}
+        # shape: (sequence_length, batch_size, a_dim)
 
         sequence_length, batch_size = as_.size()[:2]
 
         # Initial state estimate: \hat{z}_{0|-1}
+        # shape: (batch_size, z_dim, 1)
         mean_t_plus = (
             self.initial_state_mean.unsqueeze(0).repeat(batch_size, 1).unsqueeze(2)
         )
 
         # Initial state covariance: \Sigma_{0|-1}
+        # shape: (batch_size, z_dim, z_dim)
         cov_t_plus = self.initial_state_covariance.unsqueeze(0).repeat(batch_size, 1, 1)
 
-        weights = self.weight_model(as_)
+        if learn_weight_model:
+            weights = self.weight_model(as_)
+        else:
+            weights = self.weight_model(as_).detach()
 
         # Shape of weights is (sequence_length, batch_size, K)
         # Shape of mat_As and mat_Cs is (sequence_length, batch_size, z_dim, z_dim)
