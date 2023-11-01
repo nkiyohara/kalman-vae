@@ -44,6 +44,8 @@ class StateSpaceModel(nn.Module):
         self._mat_C_K = nn.Parameter(torch.randn(K, a_dim, z_dim))
         self._mat_Q_L = nn.Parameter(torch.randn(z_dim, z_dim))
         self._mat_R_L = nn.Parameter(torch.randn(a_dim, a_dim))
+        self._a_eye = torch.eye(a_dim)
+        self._z_eye = torch.eye(z_dim)
         self.Q_reg = Q_reg
         self.R_reg = R_reg
 
@@ -75,16 +77,18 @@ class StateSpaceModel(nn.Module):
         # input shape: (sequence_length, batch_size, a_dim)
         # output shape: (sequence_length, batch_size, K)
         
-    def to(self, device):
-        self = super().to(device)
-        self.initial_state_mean = self.initial_state_mean.to(device)
-        self.initial_state_covariance = self.initial_state_covariance.to(device)
+    def _apply(self, fn):
+        super()._apply(fn)
+        self._a_eye = fn(self._a_eye)
+        self._z_eye = fn(self._z_eye)
+        self.initial_state_mean = fn(self.initial_state_mean)
+        self.initial_state_covariance = fn(self.initial_state_covariance)
         return self
 
     @property
     def mat_Q(self):
         # shape: (z_dim, z_dim)
-        matrix = self._mat_Q_L @ self._mat_Q_L.T + torch.eye(self.z_dim) * self.Q_reg
+        matrix = self._mat_Q_L @ self._mat_Q_L.T + self._z_eye * self.Q_reg
         if self.fix_matrices:
             matrix = matrix.detach()
         return matrix
@@ -92,7 +96,7 @@ class StateSpaceModel(nn.Module):
     @property
     def mat_R(self):
         # shape: (a_dim, a_dim)
-        matrix = self._mat_R_L @ self._mat_R_L.T + torch.eye(self.a_dim) * self.R_reg
+        matrix = self._mat_R_L @ self._mat_R_L.T + self._a_eye * self.R_reg
         if self.fix_matrices:
             matrix = matrix.detach()
         return matrix
