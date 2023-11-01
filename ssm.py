@@ -74,6 +74,12 @@ class StateSpaceModel(nn.Module):
         self.weight_model = LSTMModel(a_dim, K, hidden_dim=hidden_dim, num_layers=num_layers)
         # input shape: (sequence_length, batch_size, a_dim)
         # output shape: (sequence_length, batch_size, K)
+        
+    def to(self, device):
+        self = super().to(device)
+        self.initial_state_mean = self.initial_state_mean.to(device)
+        self.initial_state_covariance = self.initial_state_covariance.to(device)
+        return self
 
     @property
     def mat_Q(self):
