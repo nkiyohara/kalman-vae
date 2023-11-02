@@ -24,7 +24,7 @@ class KalmanVariationalAutoencoder(nn.Module):
         self.z_dim = z_dim
         self.register_buffer('_zero_val', torch.tensor(0.0)) 
 
-    def elbo(self, xs, reconst_weight=0.3, regularization_weight=1.0, kalman_weight=1.0, kl_weight=0.0, learn_weight_model=True):
+    def elbo(self, xs, reconst_weight=0.3, regularization_weight=1.0, kalman_weight=1.0, kl_weight=0.0, learn_weight_model=True, symmetrize_covariance=True):
         seq_length = xs.shape[0]
         batch_size = xs.shape[1]
 
@@ -51,15 +51,16 @@ class KalmanVariationalAutoencoder(nn.Module):
             filter_next_covariances,
             mat_As,
             mat_Cs,
-        ) = self.state_space_model.kalman_filter(as_sample, learn_weight_model)
+        ) = self.state_space_model.kalman_filter(as_sample, learn_weight_model=learn_weight_model, symmetrize_covariance=symmetrize_covariance)
         means, covariances = self.state_space_model.kalman_smooth(
             as_sample,
-            filter_means,
-            filter_covariances,
-            filter_next_means,
-            filter_next_covariances,
-            mat_As,
-            mat_Cs,
+            filter_means=filter_means,
+            filter_covariances=filter_covariances,
+            filter_next_means=filter_next_means,
+            filter_next_covariances=filter_next_covariances,
+            mat_As=mat_As,
+            mat_Cs=mat_Cs,
+            symmetrize_covariance=symmetrize_covariance,
         )
 
         # Sample from p_\gamma (z|a,u)

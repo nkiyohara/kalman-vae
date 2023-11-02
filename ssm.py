@@ -157,7 +157,7 @@ class StateSpaceModel(nn.Module):
             )
         self._mat_C_K = nn.Parameter(value)
 
-    def kalman_filter(self, as_, learn_weight_model=True):
+    def kalman_filter(self, as_, learn_weight_model=True, symmetrize_covariance=True):
         # as_: a_0, a_1, ..., a_{T-1}
         # shape: (sequence_length, batch_size, a_dim)
 
@@ -220,14 +220,16 @@ class StateSpaceModel(nn.Module):
                 cov_t_plus - K_t @ mat_Cs[t] @ cov_t_plus
             )  # Updated state covariance
 
-            cov_t = (cov_t + cov_t.transpose(1, 2)) / 2.0  # Symmetrize
+            if symmetrize_covariance:
+                cov_t = (cov_t + cov_t.transpose(1, 2)) / 2.0
 
             # \Sigma_{1|0}, \Sigma_{2|1}, ..., \Sigma_{T|T-1}
             cov_t_plus = (
                 mat_As[t] @ cov_t @ mat_As[t].transpose(1, 2) + self.mat_Q
             )  # Predicted state covariance
 
-            cov_t_plus = (cov_t_plus + cov_t_plus.transpose(1, 2)) / 2.0  # Symmetrize
+            if symmetrize_covariance:
+                cov_t_plus = (cov_t_plus + cov_t_plus.transpose(1, 2)) / 2.0
 
             means.append(mean_t)
             covariances.append(cov_t)
@@ -245,6 +247,7 @@ class StateSpaceModel(nn.Module):
         filter_next_covariances,
         mat_As,
         mat_Cs,
+        symmetrize_covariance=True,
     ):
         # import pdb; pdb.set_trace()
         sequence_length, batch_size, _ = as_.size()
@@ -267,7 +270,8 @@ class StateSpaceModel(nn.Module):
                 covariances[0] - filter_next_covariances[t]
             ) @ J_t.transpose(1, 2)
 
-            cov_t = (cov_t + cov_t.transpose(1, 2)) / 2.0  # Symmetrize
+            if symmetrize_covariance:
+                cov_t = (cov_t + cov_t.transpose(1, 2)) / 2.0
 
             means.insert(0, mean_t)
             covariances.insert(0, cov_t)
