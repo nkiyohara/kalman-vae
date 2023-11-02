@@ -24,6 +24,50 @@ class KalmanVariationalAutoencoder(nn.Module):
         self.z_dim = z_dim
         self.register_buffer("_zero_val", torch.tensor(0.0))
 
+    def get_distribution_params(self, xs, symmetrize_covariance=True):
+        """Returns the parameters of the distribution over the latent variables"""
+
+        seq_length = xs.shape[0]
+        batch_size = xs.shape[1]
+
+        as_dist = self.encoder(xs.reshape(-1, *xs.shape[2:]))
+        as_sample = as_dist.rsample().view(seq_length, batch_size, self.a_dim)
+
+        # Kalman filter and smoother
+        (
+            filter_means,
+            filter_covariances,
+            filter_next_means,
+            filter_next_covariances,
+            mat_As,
+            mat_Cs,
+        ) = self.state_space_model.kalman_filter(
+            as_sample,
+            learn_weight_model=False,
+            symmetrize_covariance=symmetrize_covariance,
+        )
+        means, covariances = self.state_space_model.kalman_smooth(
+            as_sample,
+            filter_means=filter_means,
+            filter_covariances=filter_covariances,
+            filter_next_means=filter_next_means,
+            filter_next_covariances=filter_next_covariances,
+            mat_As=mat_As,
+            mat_Cs=mat_Cs,
+            symmetrize_covariance=symmetrize_covariance,
+        )
+
+        return {
+                "filter_means": filter_means,
+                "filter_covariances": filter_covariances,
+                "filter_next_means": filter_next_means,
+                "filter_next_covariances": filter_next_covariances,
+                "mat_As": mat_As,
+                "mat_Cs": mat_Cs,
+                "means": means,
+                "covariances": covariances,
+            }
+
     def elbo(
         self,
         xs,
