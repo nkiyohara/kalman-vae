@@ -73,10 +73,12 @@ class StateSpaceModel(nn.Module):
                 )
             self.initial_state_covariance = initial_state_covariance
 
-        self.weight_model = LSTMModel(a_dim, K, hidden_dim=hidden_dim, num_layers=num_layers)
+        self.weight_model = LSTMModel(
+            a_dim, K, hidden_dim=hidden_dim, num_layers=num_layers
+        )
         # input shape: (sequence_length, batch_size, a_dim)
         # output shape: (sequence_length, batch_size, K)
-        
+
     def _apply(self, fn):
         super()._apply(fn)
         self._a_eye = fn(self._a_eye)
@@ -100,7 +102,7 @@ class StateSpaceModel(nn.Module):
         if self.fix_matrices:
             matrix = matrix.detach()
         return matrix
-    
+
     @property
     def mat_A_K(self):
         # shape: (K, z_dim, z_dim)
@@ -108,7 +110,7 @@ class StateSpaceModel(nn.Module):
         if self.fix_matrices:
             matrix = matrix.detach()
         return matrix
-    
+
     @property
     def mat_C_K(self):
         # shape: (K, a_dim, z_dim)
@@ -116,7 +118,7 @@ class StateSpaceModel(nn.Module):
         if self.fix_matrices:
             matrix = matrix.detach()
         return matrix
-    
+
     @mat_Q.setter
     def mat_Q(self, value):
         # shape: (z_dim, z_dim)
@@ -141,19 +143,15 @@ class StateSpaceModel(nn.Module):
     def mat_A_K(self, value):
         if value.shape != (self.K, self.z_dim, self.z_dim):
             raise ValueError(
-                "mat_A_K must have shape (K, z_dim, z_dim), got {}".format(
-                    value.shape
-                )
+                "mat_A_K must have shape (K, z_dim, z_dim), got {}".format(value.shape)
             )
         self._mat_A_K = nn.Parameter(value)
-    
+
     @mat_C_K.setter
     def mat_C_K(self, value):
         if value.shape != (self.K, self.a_dim, self.z_dim):
             raise ValueError(
-                "mat_C_K must have shape (K, a_dim, z_dim), got {}".format(
-                    value.shape
-                )
+                "mat_C_K must have shape (K, a_dim, z_dim), got {}".format(value.shape)
             )
         self._mat_C_K = nn.Parameter(value)
 

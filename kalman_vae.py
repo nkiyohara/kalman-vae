@@ -22,9 +22,18 @@ class KalmanVariationalAutoencoder(nn.Module):
         self.state_space_model = StateSpaceModel(a_dim=a_dim, z_dim=z_dim, K=K)
         self.a_dim = a_dim
         self.z_dim = z_dim
-        self.register_buffer('_zero_val', torch.tensor(0.0)) 
+        self.register_buffer("_zero_val", torch.tensor(0.0))
 
-    def elbo(self, xs, reconst_weight=0.3, regularization_weight=1.0, kalman_weight=1.0, kl_weight=0.0, learn_weight_model=True, symmetrize_covariance=True):
+    def elbo(
+        self,
+        xs,
+        reconst_weight=0.3,
+        regularization_weight=1.0,
+        kalman_weight=1.0,
+        kl_weight=0.0,
+        learn_weight_model=True,
+        symmetrize_covariance=True,
+    ):
         seq_length = xs.shape[0]
         batch_size = xs.shape[1]
 
@@ -51,7 +60,11 @@ class KalmanVariationalAutoencoder(nn.Module):
             filter_next_covariances,
             mat_As,
             mat_Cs,
-        ) = self.state_space_model.kalman_filter(as_sample, learn_weight_model=learn_weight_model, symmetrize_covariance=symmetrize_covariance)
+        ) = self.state_space_model.kalman_filter(
+            as_sample,
+            learn_weight_model=learn_weight_model,
+            symmetrize_covariance=symmetrize_covariance,
+        )
         means, covariances = self.state_space_model.kalman_smooth(
             as_sample,
             filter_means=filter_means,
@@ -72,15 +85,16 @@ class KalmanVariationalAutoencoder(nn.Module):
 
         # KL divergence between q_\phi(a|x) and p(z) for VAE validation purposes
         if kl_weight != 0.0:
-            prior_distrib = D.Normal(
-                torch.zeros(self.a_dim), torch.ones(self.a_dim)
+            prior_distrib = D.Normal(torch.zeros(self.a_dim), torch.ones(self.a_dim))
+            kl_reg = (
+                -torch.distributions.kl.kl_divergence(as_dist, prior_distrib)
+                .view(seq_length, batch_size, self.a_dim)
+                .sum(0)
+                .mean(0)
+                .sum(0)
             )
-            kl_reg = -torch.distributions.kl.kl_divergence(
-                as_dist, prior_distrib
-            ).view(seq_length, batch_size, self.a_dim).sum(0).mean(0).sum(0)
         else:
             kl_reg = self._zero_val
-
 
         # For testing purposes
         # zs_distrib = D.MultivariateNormal(torch.stack(filter_means).view(-1, self.z_dim), torch.stack(filter_covariances).view(-1, self.z_dim, self.z_dim))
@@ -118,7 +132,8 @@ class KalmanVariationalAutoencoder(nn.Module):
             reconst_weight * reconstruction_obj
             + regularization_weight * regularization_obj
             + kl_weight * kl_reg
-            + kalman_weight * (
+            + kalman_weight
+            * (
                 kalman_observation_log_likelihood
                 + kalman_state_transition_log_likelihood
                 - kalman_posterior_log_likelihood
@@ -133,7 +148,13 @@ class KalmanVariationalAutoencoder(nn.Module):
             "reconstruction": reconstruction_obj.cpu().detach().numpy(),
             "regularization": regularization_obj.cpu().detach().numpy(),
             "kl": kl_reg.cpu().detach().numpy(),
-            "kalman_observation_log_likelihood": kalman_observation_log_likelihood.cpu().detach().numpy(),
-            "kalman_state_transition_log_likelihood": kalman_state_transition_log_likelihood.cpu().detach().numpy(),
-            "kalman_posterior_log_likelihood": kalman_posterior_log_likelihood.cpu().detach().numpy(),
+            "kalman_observation_log_likelihood": kalman_observation_log_likelihood.cpu()
+            .detach()
+            .numpy(),
+            "kalman_state_transition_log_likelihood": kalman_state_transition_log_likelihood.cpu()
+            .detach()
+            .numpy(),
+            "kalman_posterior_log_likelihood": kalman_posterior_log_likelihood.cpu()
+            .detach()
+            .numpy(),
         }
