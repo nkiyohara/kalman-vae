@@ -235,6 +235,41 @@ class StateSpaceModel(nn.Module):
             next_covariances.append(cov_t_plus)
 
         return means, covariances, next_means, next_covariances, mat_As, mat_Cs
+    
+    def predict_future(self, as_, means, covariances, next_means, next_covariances, mat_As, mat_Cs, num_steps, sample=False):
+        # as_: a_0, a_1, ..., a_{T-1}
+        # shape: (sequence_length, batch_size, a_dim)
+
+        sequence_length, batch_size = as_.size()[:2]
+
+        as_list = [a for a in as_]
+        mat_As_list = [mat_A for mat_A in mat_As]
+        mat_Cs_list = [mat_C for mat_C in mat_Cs]
+
+        for _ in range(num_steps):
+            means.append(next_means[-1])
+            covariances.append(next_covariances[-1])
+
+            next_a_distrib = D.MultivariateNormal(next_means[-1].view(-1, self.z_dim), next_covariances[-1])
+            if sample:
+                next_a = next_a_distrib.sample()
+            else:
+                next_a = next_a_distrib.mean
+            as_list.append(next_a.view(batch_size, self.a_dim))
+            as_tensor = torch.stack(as_list, dim=0)
+            weights = self.weight_model(as_tensor)
+            weight = weights[-1]
+            mat_A = torch.einsum("bk,kij->bij", weight, self.mat_A_K)
+            mat_C = torch.einsum("bk,kij->bij", weight, self.mat_C_K)
+            mat_As_list.append(mat_A)
+            mat_Cs_list.append(mat_C)
+            next_mean = mat_A @ next_means[-1]
+            next_covariance = mat_A @ next_covariances[-1] @ mat_A.transpose(1, 2) + self.mat_Q
+            next_means.append(next_mean)
+            next_covariances.append(next_covariance)
+
+        return means, covariances, next_means, next_covariances, mat_As_list, mat_Cs_list
+        
 
     def kalman_smooth(
         self,
