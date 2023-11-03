@@ -45,8 +45,8 @@ class StateSpaceModel(nn.Module):
         self._mat_C_K = nn.Parameter((1.0 - init_reg_weight) * torch.randn(K, a_dim, z_dim) + init_reg_weight * torch.eye(a_dim, z_dim))
         mat_Q = (1.0 - init_reg_weight) * torch.randn(z_dim, z_dim) + init_reg_weight * torch.eye(z_dim)
         mat_R = (1.0 - init_reg_weight) * torch.randn(a_dim, a_dim) + init_reg_weight * torch.eye(a_dim)
-        self._mat_Q_L = nn.Parameter(torch.cholesky((mat_Q + mat_Q.transpose(1, 2)) / 2.0))
-        self._mat_R_L = nn.Parameter(torch.cholesky((mat_R + mat_R.transpose(1, 2)) / 2.0))
+        self._mat_Q_L = nn.Parameter(torch.cholesky((mat_Q + mat_Q.T) / 2.0))
+        self._mat_R_L = nn.Parameter(torch.cholesky((mat_R + mat_R.T) / 2.0))
         self._a_eye = torch.eye(a_dim)
         self._z_eye = torch.eye(z_dim)
         self.Q_reg = Q_reg
