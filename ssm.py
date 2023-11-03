@@ -30,6 +30,7 @@ class StateSpaceModel(nn.Module):
         num_layers=2,
         Q_reg=1e-3,
         R_reg=1e-3,
+        init_reg_weight=0.9,
         initial_state_mean=None,
         initial_state_covariance=None,
         fix_matrices=False,
@@ -40,8 +41,8 @@ class StateSpaceModel(nn.Module):
         self.z_dim = z_dim
         self.K = K
 
-        self._mat_A_K = nn.Parameter(torch.randn(K, z_dim, z_dim))
-        self._mat_C_K = nn.Parameter(torch.randn(K, a_dim, z_dim))
+        self._mat_A_K = nn.Parameter((1.0 - init_reg_weight) * torch.randn(K, z_dim, z_dim) + init_reg_weight * torch.eye(z_dim))
+        self._mat_C_K = nn.Parameter((1.0 - init_reg_weight) * torch.randn(K, a_dim, z_dim) + init_reg_weight * torch.eye(a_dim, z_dim))
         self._mat_Q_L = nn.Parameter(torch.randn(z_dim, z_dim))
         self._mat_R_L = nn.Parameter(torch.randn(a_dim, a_dim))
         self._a_eye = torch.eye(a_dim)
