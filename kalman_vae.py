@@ -151,7 +151,7 @@ class KalmanVariationalAutoencoder(nn.Module):
 
         # ln p_\gamma(a|z)
         kalman_observation_distrib = D.MultivariateNormal(
-            (mat_Cs @ zs_sample).view(-1, self.a_dim), self.state_space_model.mat_R
+            (mat_Cs[:-1] @ zs_sample).view(-1, self.a_dim), self.state_space_model.mat_R
         )
         kalman_observation_log_likelihood = (
             kalman_observation_distrib.log_prob(as_sample.view(-1, self.a_dim))
