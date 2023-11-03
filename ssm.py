@@ -155,7 +155,7 @@ class StateSpaceModel(nn.Module):
             )
         self._mat_C_K = nn.Parameter(value)
 
-    def kalman_filter(self, as_, learn_weight_model=True, symmetrize_covariance=True):
+    def kalman_filter(self, as_, learn_weight_model=True, symmetrize_covariance=True, burn_in=0):
         # as_: a_0, a_1, ..., a_{T-1}
         # shape: (sequence_length, batch_size, a_dim)
 
@@ -176,11 +176,17 @@ class StateSpaceModel(nn.Module):
         else:
             weights = self.weight_model(as_).detach()
 
-        # Shape of weights is (sequence_length, batch_size, K)
-        # Shape of mat_As and mat_Cs is (sequence_length, batch_size, z_dim, z_dim)
-        # A_0, A_1, ..., A_{T-1}
+        # Add a uniform weight to the first time step
+        weights = torch.cat(
+            [torch.ones(1, batch_size, self.K).to(weights.device), weights], dim=0
+        )
+
+        # w_0, w_1, ..., w_T
+        # Shape of weights is (sequence_length + 1, batch_size, K)
+        # Shape of mat_As and mat_Cs is (sequence_length + 1, batch_size, z_dim, z_dim)
+        # A_0, A_1, ..., A_T
         mat_As = torch.einsum("tbk,kij->tbij", weights, self.mat_A_K)
-        # C_0, C_1, ..., C_{T-1}
+        # C_0, C_1, ..., C_T
         mat_Cs = torch.einsum("tbk,kij->tbij", weights, self.mat_C_K)
 
         # \hat{z}_{0|0}, \hat{z}_{1|1}, ..., \hat{z}_{T-1|T-1}
@@ -211,7 +217,7 @@ class StateSpaceModel(nn.Module):
                 as_[t].unsqueeze(2) - mat_Cs[t] @ mean_t_plus
             )  # Updated state estimate
             # z_{1|0}, z_{2|1}, ..., z_{T|T-1}
-            mean_t_plus = mat_As[t] @ mean_t  # Predicted state estimate
+            mean_t_plus = mat_As[t+1] @ mean_t  # Predicted state estimate
 
             # \Sigma_{0|0}, \Sigma_{1|1}, ..., \Sigma_{T-1|T-1}
             cov_t = (
@@ -223,11 +229,17 @@ class StateSpaceModel(nn.Module):
 
             # \Sigma_{1|0}, \Sigma_{2|1}, ..., \Sigma_{T|T-1}
             cov_t_plus = (
-                mat_As[t] @ cov_t @ mat_As[t].transpose(1, 2) + self.mat_Q
+                mat_As[t+1] @ cov_t @ mat_As[t+1].transpose(1, 2) + self.mat_Q
             )  # Predicted state covariance
 
             if symmetrize_covariance:
                 cov_t_plus = (cov_t_plus + cov_t_plus.transpose(1, 2)) / 2.0
+
+            if t < burn_in:
+                mean_t = mean_t.detach()
+                cov_t = cov_t.detach()
+                mean_t_plus = mean_t_plus.detach()
+                cov_t_plus = cov_t_plus.detach()
 
             means.append(mean_t)
             covariances.append(cov_t)
@@ -235,41 +247,7 @@ class StateSpaceModel(nn.Module):
             next_covariances.append(cov_t_plus)
 
         return means, covariances, next_means, next_covariances, mat_As, mat_Cs
-    
-    def predict_future(self, as_, means, covariances, next_means, next_covariances, mat_As, mat_Cs, num_steps, sample=False):
-        # as_: a_0, a_1, ..., a_{T-1}
-        # shape: (sequence_length, batch_size, a_dim)
 
-        sequence_length, batch_size = as_.size()[:2]
-
-        as_list = [a for a in as_]
-        mat_As_list = [mat_A for mat_A in mat_As]
-        mat_Cs_list = [mat_C for mat_C in mat_Cs]
-
-        for _ in range(num_steps):
-            means.append(next_means[-1])
-            covariances.append(next_covariances[-1])
-
-            next_a_distrib = D.MultivariateNormal(next_means[-1].view(-1, self.z_dim), next_covariances[-1])
-            if sample:
-                next_a = next_a_distrib.sample()
-            else:
-                next_a = next_a_distrib.mean
-            as_list.append(next_a.view(batch_size, self.a_dim))
-            as_tensor = torch.stack(as_list, dim=0)
-            weights = self.weight_model(as_tensor)
-            weight = weights[-1]
-            mat_A = torch.einsum("bk,kij->bij", weight, self.mat_A_K)
-            mat_C = torch.einsum("bk,kij->bij", weight, self.mat_C_K)
-            mat_As_list.append(mat_A)
-            mat_Cs_list.append(mat_C)
-            next_mean = mat_A @ next_means[-1]
-            next_covariance = mat_A @ next_covariances[-1] @ mat_A.transpose(1, 2) + self.mat_Q
-            next_means.append(next_mean)
-            next_covariances.append(next_covariance)
-
-        return means, covariances, next_means, next_covariances, mat_As_list, mat_Cs_list
-        
 
     def kalman_smooth(
         self,
@@ -281,6 +259,7 @@ class StateSpaceModel(nn.Module):
         mat_As,
         mat_Cs,
         symmetrize_covariance=True,
+        burn_in=0,
     ):
         # import pdb; pdb.set_trace()
         sequence_length, batch_size, _ = as_.size()
@@ -292,7 +271,7 @@ class StateSpaceModel(nn.Module):
             # J_{T-2}, J_{T-3}, ..., J_0
             J_t = (
                 filter_covariances[t]
-                @ mat_As[t].transpose(1, 2)
+                @ mat_As[t+1].transpose(1, 2)
                 @ torch.inverse(filter_next_covariances[t])
             )
 
@@ -306,6 +285,10 @@ class StateSpaceModel(nn.Module):
             if symmetrize_covariance:
                 cov_t = (cov_t + cov_t.transpose(1, 2)) / 2.0
 
+            if t < burn_in:
+                mean_t = mean_t.detach()
+                cov_t = cov_t.detach()
+            
             means.insert(0, mean_t)
             covariances.insert(0, cov_t)
 
@@ -330,7 +313,7 @@ class StateSpaceModel(nn.Module):
                 zs[t].view(-1, self.z_dim)
             ).sum()
 
-            mean_t_plus = mat_As[t] @ zs[t]
+            mean_t_plus = mat_As[t+1] @ zs[t]
             cov_t_plus = self.mat_Q
 
             # else:
@@ -341,3 +324,52 @@ class StateSpaceModel(nn.Module):
             #     cov_t_plus = (cov_t_plus + cov_t_plus.transpose(1, 2)) / 2.0
 
         return state_transition_log_likelihood
+    
+    def predict_future(self, as_, means, covariances, next_means, next_covariances, mat_As, mat_Cs, num_steps, sample=False):
+        # as_: a_0, a_1, ..., a_{T-1}
+        # shape: (sequence_length, batch_size, a_dim)
+
+        sequence_length, batch_size = as_.size()[:2]
+
+        as_list = [a for a in as_] # a_0, a_1, ..., a_{T-1}
+        mat_As_list = [mat_A for mat_A in mat_As] # A_0, A_1, ..., A_T
+        mat_Cs_list = [mat_C for mat_C in mat_Cs] # C_0, C_1, ..., C_T
+        means = [mean for mean in means] # \hat{z}_{0|T-1}, \hat{z}_{1|T-1}, ..., \hat{z}_{T-1|T-1}
+        covariances = [covariance for covariance in covariances] # \Sigma_{0|T-1}, \Sigma_{1|T-1}, ..., \Sigma_{T-1|T-1}
+        # next_means: z_{1|0}, z_{2|1}, ..., z_{T|T-1}
+        # next_covariances: \Sigma_{1|0}, \Sigma_{2|1}, ..., \Sigma_{T|T-1}
+
+        as_tensor = torch.stack(as_list, dim=0)
+
+        for t_future in range(num_steps):
+            t = sequence_length + t_future # T, T + 1, ..., T + num_steps - 1
+    
+            means.append(next_means[-1])
+            covariances.append(next_covariances[-1])
+
+            next_z_distrib = D.MultivariateNormal(next_means[-1].view(-1, self.z_dim), next_covariances[-1])
+
+            if sample:
+                next_z = next_z_distrib.sample()
+            else:
+                next_z = next_z_distrib.mean
+            
+            next_a = mat_Cs_list[t] @ next_z.unsqueeze(-1)
+            as_list.append(next_a.view(batch_size, self.a_dim))
+            as_tensor = torch.stack(as_list, dim=0)
+            weights = self.weight_model(as_tensor)
+            mat_A = torch.einsum("bk,kij->bij", weights[-1], self.mat_A_K)
+            mat_C = torch.einsum("bk,kij->bij", weights[-1], self.mat_C_K)
+            mat_As_list.append(mat_A)
+            mat_Cs_list.append(mat_C)
+            next_mean = mat_A @ next_means[-1]
+            if sample:
+                next_covariance = self.mat_Q
+            else:
+                next_covariance = mat_A @ next_covariances[-1] @ mat_A.transpose(1, 2) + self.mat_Q
+            next_covariance = (next_covariance + next_covariance.transpose(1, 2)) / 2.0
+            next_means.append(next_mean)
+            next_covariances.append(next_covariance)
+
+        return as_tensor, means, covariances, next_means, next_covariances, mat_As_list, mat_Cs_list
+        

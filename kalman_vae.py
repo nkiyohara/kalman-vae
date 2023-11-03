@@ -77,6 +77,7 @@ class KalmanVariationalAutoencoder(nn.Module):
         kl_weight=0.0,
         learn_weight_model=True,
         symmetrize_covariance=True,
+        burn_in=0,
     ):
         seq_length = xs.shape[0]
         batch_size = xs.shape[1]
@@ -108,6 +109,7 @@ class KalmanVariationalAutoencoder(nn.Module):
             as_sample,
             learn_weight_model=learn_weight_model,
             symmetrize_covariance=symmetrize_covariance,
+            burn_in=burn_in,
         )
         means, covariances = self.state_space_model.kalman_smooth(
             as_sample,
@@ -118,6 +120,7 @@ class KalmanVariationalAutoencoder(nn.Module):
             mat_As=mat_As,
             mat_Cs=mat_Cs,
             symmetrize_covariance=symmetrize_covariance,
+            burn_in=burn_in,
         )
 
         # Sample from p_\gamma (z|a,u)
@@ -201,4 +204,68 @@ class KalmanVariationalAutoencoder(nn.Module):
             "kalman_posterior_log_likelihood": kalman_posterior_log_likelihood.cpu()
             .detach()
             .numpy(),
+        }
+
+    def predict_future(
+        self,
+        xs,
+        num_steps,
+        sample=False,
+        symmetrize_covariance=True,
+    ):
+        seq_length = xs.shape[0]
+        batch_size = xs.shape[1]
+
+        as_dist = self.encoder(xs.reshape(-1, *xs.shape[2:]))
+
+        if sample:
+            as_ = as_dist.sample().view(seq_length, batch_size, self.a_dim)
+        else:
+            as_ = as_dist.mean.view(seq_length, batch_size, self.a_dim)
+
+        # Kalman filter and smoother
+        (
+            filter_means,
+            filter_covariances,
+            filter_next_means,
+            filter_next_covariances,
+            mat_As,
+            mat_Cs,
+        ) = self.state_space_model.kalman_filter(
+            as_,
+            learn_weight_model=False,
+            symmetrize_covariance=symmetrize_covariance,
+        )
+        means, covariances = self.state_space_model.kalman_smooth(
+            as_,
+            filter_means=filter_means,
+            filter_covariances=filter_covariances,
+            filter_next_means=filter_next_means,
+            filter_next_covariances=filter_next_covariances,
+            mat_As=mat_As,
+            mat_Cs=mat_Cs,
+            symmetrize_covariance=symmetrize_covariance,
+        )
+
+        as_, means, covariances, filter_next_means, filter_next_covariances, mat_As, mat_Cs = self.state_space_model.predict_future(
+            as_, means, covariances, filter_next_means, filter_next_covariances, mat_As, mat_Cs, num_steps, sample=sample
+        )
+
+        # shape of as_: (sequence_length + num_steps, batch_size, a_dim, 1)
+        xs_dist = self.decoder(as_.view(-1, self.a_dim))
+        
+        if sample:
+            xs = xs_dist.sample()
+        else:
+            xs = xs_dist.mean
+        xs = xs.view(seq_length + num_steps, batch_size, *xs.shape[1:])
+
+        return xs, {
+            "as": as_,
+            "means": means,
+            "covariances": covariances,
+            "filter_next_means": filter_next_means,
+            "filter_next_covariances": filter_next_covariances,
+            "mat_As": mat_As,
+            "mat_Cs": mat_Cs,
         }
