@@ -184,7 +184,7 @@ class StateSpaceModel(nn.Module):
             # C_0, C_1, ..., C_T
             mat_Cs = torch.einsum("tbk,kij->tbij", weights, self.mat_C_K)
         else:
-            weight_next = torch.ones(1, batch_size, self.K).to(as_.device)
+            weight_next = torch.ones(batch_size, self.K).to(as_.device)
 
         # Initial state estimate: \hat{z}_{0|-1}
         # shape: (batch_size, z_dim, 1)
