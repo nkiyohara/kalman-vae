@@ -1,17 +1,24 @@
+from typing import Literal
+
 import torch
 import torch.distributions as D
 import torch.nn as nn
 import torch.nn.functional as F
 
-from typing import Literal
 from sample_control import SampleControl
-from ssm import StateSpaceModel
-from vae import BernoulliDecoder, Encoder, GaussianDecoder
+from state_space_model import StateSpaceModel
+from variationa_autoencoder import BernoulliDecoder, Encoder, GaussianDecoder
 
 
 class KalmanVariationalAutoencoder(nn.Module):
     def __init__(
-        self, image_size, image_channels, a_dim, z_dim, K, decoder_type: Literal["gaussian", "bernoulli"] ="gaussian"
+        self,
+        image_size,
+        image_channels,
+        a_dim,
+        z_dim,
+        K,
+        decoder_type: Literal["gaussian", "bernoulli"] = "gaussian",
     ):
         super(KalmanVariationalAutoencoder, self).__init__()
         self.encoder = Encoder(image_size, image_channels, a_dim)
@@ -32,8 +39,8 @@ class KalmanVariationalAutoencoder(nn.Module):
         seq_length = xs.shape[0]
         batch_size = xs.shape[1]
 
-        as_dist = self.encoder(xs.reshape(-1, *xs.shape[2:]))
-        as_sample = as_dist.rsample().view(seq_length, batch_size, self.a_dim)
+        as_distrib = self.encoder(xs.reshape(-1, *xs.shape[2:]))
+        as_sample = as_distrib.rsample().view(seq_length, batch_size, self.a_dim)
 
         # Kalman filter and smoother
         (
@@ -86,24 +93,24 @@ class KalmanVariationalAutoencoder(nn.Module):
         seq_length = xs.shape[0]
         batch_size = xs.shape[1]
 
-        as_dist = self.encoder(xs.reshape(-1, *xs.shape[2:]))
+        as_distrib = self.encoder(xs.reshape(-1, *xs.shape[2:]))
         if sample_control.encoder == "sample":
-            as_sample = as_dist.rsample().view(seq_length, batch_size, self.a_dim)
+            as_sample = as_distrib.rsample().view(seq_length, batch_size, self.a_dim)
         else:
             raise ValueError(
                 "Invalid sample control for encoder: {}".format(sample_control.encoder)
             )
 
         # Reconstruction objective
-        xs_dist = self.decoder(as_sample.view(-1, self.a_dim))
+        xs_distrib = self.decoder(as_sample.view(-1, self.a_dim))
         reconstruction_obj = (
-            xs_dist.log_prob(xs.reshape(-1, *xs.shape[2:])).sum(0).mean(0).sum()
+            xs_distrib.log_prob(xs.reshape(-1, *xs.shape[2:])).sum(0).mean(0).sum()
         )
 
         # Regularization objective
         # -ln q_\phi(a|x)
         regularization_obj = (
-            -as_dist.log_prob(as_sample.view(-1, self.a_dim)).sum(0).mean(0).sum()
+            -as_distrib.log_prob(as_sample.view(-1, self.a_dim)).sum(0).mean(0).sum()
         )
 
         # Kalman filter and smoother
@@ -145,7 +152,7 @@ class KalmanVariationalAutoencoder(nn.Module):
         if kl_weight != 0.0:
             prior_distrib = D.Normal(torch.zeros(self.a_dim), torch.ones(self.a_dim))
             kl_reg = (
-                -torch.distributions.kl.kl_divergence(as_dist, prior_distrib)
+                -torch.distributions.kl.kl_divergence(as_distrib, prior_distrib)
                 .view(seq_length, batch_size, self.a_dim)
                 .sum(0)
                 .mean(0)
@@ -235,12 +242,12 @@ class KalmanVariationalAutoencoder(nn.Module):
         seq_length = xs.shape[0]
         batch_size = xs.shape[1]
 
-        as_dist = self.encoder(xs.reshape(-1, *xs.shape[2:]))
+        as_distrib = self.encoder(xs.reshape(-1, *xs.shape[2:]))
 
         if sample_control.encoder == "sample":
-            as_ = as_dist.sample().view(seq_length, batch_size, self.a_dim)
+            as_ = as_distrib.sample().view(seq_length, batch_size, self.a_dim)
         elif sample_control.encoder == "mean":
-            as_ = as_dist.mean.view(seq_length, batch_size, self.a_dim)
+            as_ = as_distrib.mean.view(seq_length, batch_size, self.a_dim)
         else:
             raise ValueError(
                 "Invalid sample control for encoder: {}".format(sample_control.encoder)
@@ -292,12 +299,12 @@ class KalmanVariationalAutoencoder(nn.Module):
         )
 
         # shape of as_: (sequence_length + num_steps, batch_size, a_dim, 1)
-        xs_dist = self.decoder(as_.view(-1, self.a_dim))
+        xs_distrib = self.decoder(as_.view(-1, self.a_dim))
 
         if sample_control.decoder == "sample":
-            xs = xs_dist.sample()
+            xs = xs_distrib.sample()
         elif sample_control.decoder == "mean":
-            xs = xs_dist.mean
+            xs = xs_distrib.mean
         else:
             raise ValueError(
                 "Invalid sample control for decoder: {}".format(sample_control.decoder)

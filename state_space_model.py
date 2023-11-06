@@ -3,8 +3,8 @@ import torch.distributions as D
 import torch.nn as nn
 import torch.nn.functional as F
 
-from sample_control import SampleControl
 from dynamics_parameter_network import LSTMModel
+from sample_control import SampleControl
 
 
 class StateSpaceModel(nn.Module):
@@ -172,7 +172,9 @@ class StateSpaceModel(nn.Module):
         self.weight_model.clear_hidden_state()
 
         # Initial weight
-        weight_next = torch.ones(1, batch_size, self.K, device=as_.device, dtype=as_.dtype)
+        weight_next = torch.ones(
+            1, batch_size, self.K, device=as_.device, dtype=as_.dtype
+        )
 
         # Initial state estimate: \hat{z}_{0|-1}
         # shape: (batch_size, z_dim, 1)
@@ -224,8 +226,8 @@ class StateSpaceModel(nn.Module):
             mat_C = torch.einsum("tbk,kij->bij", weight, self.mat_C_K)
 
             a_distrib = D.MultivariateNormal(
-                    torch.bmm(mat_C, z_next.unsqueeze(-1)).squeeze(-1), self.mat_R
-                )
+                torch.bmm(mat_C, z_next.unsqueeze(-1)).squeeze(-1), self.mat_R
+            )
             if sample_control.observation == "sample":
                 a_pred = a_distrib.rsample()
             elif sample_control.observation == "mean":
@@ -240,7 +242,9 @@ class StateSpaceModel(nn.Module):
             if observation_mask is None:
                 a = as_[t : t + 1]
             else:
-                a = as_[t : t + 1] * observation_mask[t : t + 1].unsqueeze(-1) + a_pred.unsqueeze(0) * (
+                a = as_[t : t + 1] * observation_mask[t : t + 1].unsqueeze(
+                    -1
+                ) + a_pred.unsqueeze(0) * (
                     1.0 - observation_mask[t : t + 1].unsqueeze(-1)
                 )
 
@@ -270,9 +274,7 @@ class StateSpaceModel(nn.Module):
             mean_t_plus = mat_A_next @ mean_t  # Predicted state estimate
 
             # \Sigma_{0|0}, \Sigma_{1|1}, ..., \Sigma_{T-1|T-1}
-            cov_t = (
-                cov_t_plus - K_t @ mat_C @ cov_t_plus
-            )  # Updated state covariance
+            cov_t = cov_t_plus - K_t @ mat_C @ cov_t_plus  # Updated state covariance
 
             if symmetrize_covariance:
                 cov_t = (cov_t + cov_t.transpose(1, 2)) / 2.0
