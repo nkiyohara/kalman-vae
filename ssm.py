@@ -4,22 +4,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from sample_control import SampleControl
-
-
-class LSTMModel(nn.Module):
-    def __init__(self, a_dim, K, hidden_dim, num_layers):
-        super(LSTMModel, self).__init__()
-        self.a_dim = a_dim
-        self.K = K
-
-        self.lstm = nn.LSTM(a_dim, hidden_dim, num_layers=num_layers, batch_first=False)
-        self.linear = nn.Linear(hidden_dim, K)
-
-    def forward(self, x):
-        x, h = self.lstm(x)
-        x = self.linear(x)
-        x = F.softmax(x, dim=-1)
-        return x
+from dynamics_parameter_network import LSTMModel
 
 
 class StateSpaceModel(nn.Module):
@@ -181,29 +166,13 @@ class StateSpaceModel(nn.Module):
     ):
         # as_: a_0, a_1, ..., a_{T-1}
         # shape: (sequence_length, batch_size, a_dim)
-
         sequence_length, batch_size = as_.size()[:2]
 
-        if observation_mask is None:
-            if learn_weight_model:
-                weights = self.weight_model(as_)
-            else:
-                weights = self.weight_model(as_).detach()
+        # Initialize dynamics parameter network
+        self.weight_model.clear_hidden_state()
 
-            # Add a uniform weight to the first time step
-            weights = torch.cat(
-                [torch.ones(1, batch_size, self.K, device=weights.device, dtype=weights.dtype), weights], dim=0
-            )
-
-            # w_0, w_1, ..., w_T
-            # Shape of weights is (sequence_length + 1, batch_size, K)
-            # Shape of mat_As and mat_Cs is (sequence_length + 1, batch_size, z_dim, z_dim)
-            # A_0, A_1, ..., A_T
-            mat_As = torch.einsum("tbk,kij->tbij", weights, self.mat_A_K)
-            # C_0, C_1, ..., C_T
-            mat_Cs = torch.einsum("tbk,kij->tbij", weights, self.mat_C_K)
-        else:
-            weight_next = torch.ones(1, batch_size, self.K, device=as_.device, dtype=as_.dtype)
+        # Initial weight
+        weight_next = torch.ones(1, batch_size, self.K, device=as_.device, dtype=as_.dtype)
 
         # Initial state estimate: \hat{z}_{0|-1}
         # shape: (batch_size, z_dim, 1)
@@ -231,59 +200,59 @@ class StateSpaceModel(nn.Module):
         mat_Cs_list = []
 
         for t in range(sequence_length):
-            if observation_mask is None:
-                mat_A_next = mat_As[t + 1]
-                mat_C = mat_Cs[t]
+            z_next_distrib = D.MultivariateNormal(
+                mean_t_plus.view(-1, self.z_dim), cov_t_plus
+            )
+            if sample_control.state_transition == "sample":
+                z_next = z_next_distrib.rsample()
+            elif sample_control.state_transition == "mean":
+                z_next = z_next_distrib.mean
             else:
-                z_next_distrib = D.MultivariateNormal(
-                    mean_t_plus.view(-1, self.z_dim), cov_t_plus
+                raise ValueError(
+                    "Invalid sample_control.state_transition: {}".format(
+                        sample_control.state_transition
+                    )
                 )
-                if sample_control.state_transition == "sample":
-                    z_next = z_next_distrib.rsample()
-                elif sample_control.state_transition == "mean":
-                    z_next = z_next_distrib.mean
-                else:
-                    raise ValueError(
-                        "Invalid sample_control.state_transition: {}".format(
-                            sample_control.state_transition
-                        )
-                    )
-                # shape of z_next: (batch_size, z_dim)
+            # shape of z_next: (batch_size, z_dim)
 
-                weight = weight_next
+            weight = weight_next
 
-                if t == 0:
-                    mat_A = torch.einsum("tbk,kij->bij", weight, self.mat_A_K)
-                else:
-                    mat_A = mat_A_next
-                mat_C = torch.einsum("tbk,kij->bij", weight, self.mat_C_K)
+            if t == 0:
+                mat_A = torch.einsum("tbk,kij->bij", weight, self.mat_A_K)
+            else:
+                mat_A = mat_A_next
+            mat_C = torch.einsum("tbk,kij->bij", weight, self.mat_C_K)
 
-                a_distrib = D.MultivariateNormal(
-                        torch.bmm(mat_C, z_next.unsqueeze(-1)).squeeze(-1), self.mat_R
+            a_distrib = D.MultivariateNormal(
+                    torch.bmm(mat_C, z_next.unsqueeze(-1)).squeeze(-1), self.mat_R
+                )
+            if sample_control.observation == "sample":
+                a_pred = a_distrib.rsample()
+            elif sample_control.observation == "mean":
+                a_pred = a_distrib.mean
+            else:
+                raise ValueError(
+                    "Invalid sample_control.observation: {}".format(
+                        sample_control.observation
                     )
-                if sample_control.observation == "sample":
-                    a_pred = a_distrib.rsample()
-                elif sample_control.observation == "mean":
-                    a_pred = a_distrib.mean
-                else:
-                    raise ValueError(
-                        "Invalid sample_control.observation: {}".format(
-                            sample_control.observation
-                        )
-                    )
+                )
+
+            if observation_mask is None:
+                a = as_[t : t + 1]
+            else:
                 a = as_[t : t + 1] * observation_mask[t : t + 1].unsqueeze(-1) + a_pred.unsqueeze(0) * (
                     1.0 - observation_mask[t : t + 1].unsqueeze(-1)
                 )
 
-                if learn_weight_model:
-                    weight_next = self.weight_model(a)
-                else:
-                    weight_next = self.weight_model(a).detach()
+            if learn_weight_model:
+                weight_next = self.weight_model(a)
+            else:
+                weight_next = self.weight_model(a).detach()
 
-                mat_A_next = torch.einsum("tbk,kij->bij", weight_next, self.mat_A_K)
+            mat_A_next = torch.einsum("tbk,kij->bij", weight_next, self.mat_A_K)
 
-                mat_As_list.append(mat_A)
-                mat_Cs_list.append(mat_C)
+            mat_As_list.append(mat_A)
+            mat_Cs_list.append(mat_C)
 
             # Kalman gain
             # K_0, K_1, ..., K_{T-1}
@@ -327,14 +296,13 @@ class StateSpaceModel(nn.Module):
             next_means.append(mean_t_plus)
             next_covariances.append(cov_t_plus)
 
-        if observation_mask is not None:
-            mat_C_next = torch.einsum("tbk,kij->bij", weight_next, self.mat_C_K)
+        mat_C_next = torch.einsum("tbk,kij->bij", weight_next, self.mat_C_K)
 
-            mat_As_list.append(mat_A_next)
-            mat_Cs_list.append(mat_C_next)
+        mat_As_list.append(mat_A_next)
+        mat_Cs_list.append(mat_C_next)
 
-            mat_As = torch.stack(mat_As_list, dim=0)
-            mat_Cs = torch.stack(mat_Cs_list, dim=0)
+        mat_As = torch.stack(mat_As_list, dim=0)
+        mat_Cs = torch.stack(mat_Cs_list, dim=0)
 
         return means, covariances, next_means, next_covariances, mat_As, mat_Cs
 

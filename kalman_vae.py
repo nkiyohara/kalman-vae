@@ -3,6 +3,7 @@ import torch.distributions as D
 import torch.nn as nn
 import torch.nn.functional as F
 
+from typing import Literal
 from sample_control import SampleControl
 from ssm import StateSpaceModel
 from vae import BernoulliDecoder, Encoder, GaussianDecoder
@@ -10,7 +11,7 @@ from vae import BernoulliDecoder, Encoder, GaussianDecoder
 
 class KalmanVariationalAutoencoder(nn.Module):
     def __init__(
-        self, image_size, image_channels, a_dim, z_dim, K, decoder_type="gaussian"
+        self, image_size, image_channels, a_dim, z_dim, K, decoder_type: Literal["gaussian", "bernoulli"] ="gaussian"
     ):
         super(KalmanVariationalAutoencoder, self).__init__()
         self.encoder = Encoder(image_size, image_channels, a_dim)
