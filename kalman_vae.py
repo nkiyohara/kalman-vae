@@ -3,9 +3,9 @@ import torch.distributions as D
 import torch.nn as nn
 import torch.nn.functional as F
 
+from sample_control import SampleControl
 from ssm import StateSpaceModel
 from vae import BernoulliDecoder, Encoder, GaussianDecoder
-from sample_control import SampleControl
 
 
 class KalmanVariationalAutoencoder(nn.Module):
@@ -59,20 +59,21 @@ class KalmanVariationalAutoencoder(nn.Module):
         )
 
         return {
-                "filter_means": filter_means,
-                "filter_covariances": filter_covariances,
-                "filter_next_means": filter_next_means,
-                "filter_next_covariances": filter_next_covariances,
-                "mat_As": mat_As,
-                "mat_Cs": mat_Cs,
-                "means": means,
-                "covariances": covariances,
-            }
+            "filter_means": filter_means,
+            "filter_covariances": filter_covariances,
+            "filter_next_means": filter_next_means,
+            "filter_next_covariances": filter_next_covariances,
+            "mat_As": mat_As,
+            "mat_Cs": mat_Cs,
+            "means": means,
+            "covariances": covariances,
+        }
 
     def elbo(
         self,
         xs,
         sample_control: SampleControl,
+        observation_mask=None,
         reconst_weight=0.3,
         regularization_weight=1.0,
         kalman_weight=1.0,
@@ -115,6 +116,7 @@ class KalmanVariationalAutoencoder(nn.Module):
         ) = self.state_space_model.kalman_filter(
             as_sample,
             sample_control=sample_control,
+            observation_mask=observation_mask,
             learn_weight_model=learn_weight_model,
             symmetrize_covariance=symmetrize_covariance,
             burn_in=burn_in,
@@ -260,13 +262,29 @@ class KalmanVariationalAutoencoder(nn.Module):
             symmetrize_covariance=symmetrize_covariance,
         )
 
-        as_, means, covariances, filter_next_means, filter_next_covariances, mat_As, mat_Cs = self.state_space_model.predict_future(
-            as_, means, covariances, filter_next_means, filter_next_covariances, mat_As, mat_Cs, num_steps, sample_control=sample_control
+        (
+            as_,
+            means,
+            covariances,
+            filter_next_means,
+            filter_next_covariances,
+            mat_As,
+            mat_Cs,
+        ) = self.state_space_model.predict_future(
+            as_,
+            means,
+            covariances,
+            filter_next_means,
+            filter_next_covariances,
+            mat_As,
+            mat_Cs,
+            num_steps,
+            sample_control=sample_control,
         )
 
         # shape of as_: (sequence_length + num_steps, batch_size, a_dim, 1)
         xs_dist = self.decoder(as_.view(-1, self.a_dim))
-        
+
         if sample_control.decoder == "sample":
             xs = xs_dist.sample()
         elif sample_control.decoder == "mean":
