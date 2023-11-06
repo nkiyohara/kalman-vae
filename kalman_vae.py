@@ -95,14 +95,22 @@ class KalmanVariationalAutoencoder(nn.Module):
 
         as_distrib = self.encoder(xs.reshape(-1, *xs.shape[2:]))
         if sample_control.encoder == "sample":
-            as_sample = as_distrib.rsample().view(seq_length, batch_size, self.a_dim)
+            as_ = as_distrib.rsample().view(seq_length, batch_size, self.a_dim)
+        elif sample_control.encoder == "mean":
+            if self.training:
+                raise ValueError(
+                    "Invalid sample control for encoder: {}".format(
+                        sample_control.encoder
+                    )
+                )
+            as_ = as_distrib.mean.view(seq_length, batch_size, self.a_dim)
         else:
             raise ValueError(
                 "Invalid sample control for encoder: {}".format(sample_control.encoder)
             )
 
         # Reconstruction objective
-        xs_distrib = self.decoder(as_sample.view(-1, self.a_dim))
+        xs_distrib = self.decoder(as_.view(-1, self.a_dim))
         reconstruction_obj = (
             xs_distrib.log_prob(xs.reshape(-1, *xs.shape[2:])).sum(0).mean(0).sum()
         )
@@ -110,7 +118,7 @@ class KalmanVariationalAutoencoder(nn.Module):
         # Regularization objective
         # -ln q_\phi(a|x)
         regularization_obj = (
-            -as_distrib.log_prob(as_sample.view(-1, self.a_dim)).sum(0).mean(0).sum()
+            -as_distrib.log_prob(as_.view(-1, self.a_dim)).sum(0).mean(0).sum()
         )
 
         # Kalman filter and smoother
@@ -121,16 +129,17 @@ class KalmanVariationalAutoencoder(nn.Module):
             filter_next_covariances,
             mat_As,
             mat_Cs,
+            filter_as,
         ) = self.state_space_model.kalman_filter(
-            as_sample,
+            as_,
             sample_control=sample_control,
             observation_mask=observation_mask,
             learn_weight_model=learn_weight_model,
             symmetrize_covariance=symmetrize_covariance,
             burn_in=burn_in,
         )
-        means, covariances = self.state_space_model.kalman_smooth(
-            as_sample,
+        means, covariances, zs, as_ = self.state_space_model.kalman_smooth(
+            filter_as,
             filter_means=filter_means,
             filter_covariances=filter_covariances,
             filter_next_means=filter_next_means,
@@ -172,7 +181,7 @@ class KalmanVariationalAutoencoder(nn.Module):
             (mat_Cs[:-1] @ zs_sample).view(-1, self.a_dim), self.state_space_model.mat_R
         )
         kalman_observation_log_likelihood = (
-            kalman_observation_distrib.log_prob(as_sample.view(-1, self.a_dim))
+            kalman_observation_distrib.log_prob(as_.view(-1, self.a_dim))
             .view(seq_length, batch_size, -1)
             .sum(0)
             .mean(0)
@@ -222,14 +231,18 @@ class KalmanVariationalAutoencoder(nn.Module):
             "kalman_posterior_log_likelihood": kalman_posterior_log_likelihood.cpu()
             .detach()
             .numpy(),
+            "observation_mask": observation_mask,
             "filter_means": filter_means,
             "filter_covariances": filter_covariances,
             "filter_next_means": filter_next_means,
             "filter_next_covariances": filter_next_covariances,
+            "filter_as": filter_as,
             "mat_As": mat_As,
             "mat_Cs": mat_Cs,
             "means": means,
             "covariances": covariances,
+            "as": as_,
+            "zs": zs,
         }
 
     def predict_future(

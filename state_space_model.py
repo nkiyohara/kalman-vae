@@ -198,6 +198,8 @@ class StateSpaceModel(nn.Module):
         # \Sigma_{1|0}, \Sigma_{2|1}, ..., \Sigma_{T|T-1}
         next_covariances = []
 
+        as_list = []
+
         mat_As_list = []
         mat_Cs_list = []
 
@@ -247,6 +249,8 @@ class StateSpaceModel(nn.Module):
                 ) + a_pred.unsqueeze(0) * (
                     1.0 - observation_mask[t : t + 1].unsqueeze(-1)
                 )
+
+            as_list.append(a)
 
             if learn_weight_model:
                 weight_next = self.weight_model(a)
@@ -306,7 +310,9 @@ class StateSpaceModel(nn.Module):
         mat_As = torch.stack(mat_As_list, dim=0)
         mat_Cs = torch.stack(mat_Cs_list, dim=0)
 
-        return means, covariances, next_means, next_covariances, mat_As, mat_Cs
+        as_ = torch.stack(as_list, dim=0)
+
+        return means, covariances, next_means, next_covariances, mat_As, mat_Cs, as_
 
     def kalman_smooth(
         self,
@@ -317,6 +323,7 @@ class StateSpaceModel(nn.Module):
         filter_next_covariances,
         mat_As,
         mat_Cs,
+        sample_control: SampleControl,
         symmetrize_covariance=True,
         burn_in=0,
     ):
@@ -325,6 +332,37 @@ class StateSpaceModel(nn.Module):
 
         means = [filter_means[-1]]  # \hat{z}_{T-1|T-1}
         covariances = [filter_covariances[-1]]  # \Sigma_{T-1|T-1}
+
+        z_distrib = D.MultivariateNormal(
+            filter_means[-1].view(-1, self.z_dim), filter_covariances[-1]
+        )
+        if sample_control.state_transition == "sample":
+            z = z_distrib.rsample()
+        elif sample_control.state_transition == "mean":
+            z = z_distrib.mean
+        else:
+            raise ValueError(
+                "Invalid sample_control.state_transition: {}".format(
+                    sample_control.state_transition
+                )
+            )
+
+        a_distrib = D.MultivariateNormal(
+            torch.bmm(mat_Cs[-1], z.unsqueeze(-1)).squeeze(-1), self.mat_R
+        )
+        if sample_control.observation == "sample":
+            a = a_distrib.rsample()
+        elif sample_control.observation == "mean":
+            a = a_distrib.mean
+        else:
+            raise ValueError(
+                "Invalid sample_control.observation: {}".format(
+                    sample_control.observation
+                )
+            )
+
+        zs_list = [z]
+        as_list = [a]
 
         for t in reversed(range(sequence_length - 1)):
             # J_{T-2}, J_{T-3}, ..., J_0
@@ -348,10 +386,43 @@ class StateSpaceModel(nn.Module):
                 mean_t = mean_t.detach()
                 cov_t = cov_t.detach()
 
+            z_distrib = D.MultivariateNormal(mean_t.view(-1, self.z_dim), cov_t)
+            if sample_control.state_transition == "sample":
+                z = z_distrib.rsample()
+            elif sample_control.state_transition == "mean":
+                z = z_distrib.mean
+            else:
+                raise ValueError(
+                    "Invalid sample_control.state_transition: {}".format(
+                        sample_control.state_transition
+                    )
+                )
+
+            a_distrib = D.MultivariateNormal(
+                torch.bmm(mat_Cs[t], z.unsqueeze(-1)).squeeze(-1), self.mat_R
+            )
+            if sample_control.observation == "sample":
+                a = a_distrib.rsample()
+            elif sample_control.observation == "mean":
+                a = a_distrib.mean
+            else:
+                raise ValueError(
+                    "Invalid sample_control.observation: {}".format(
+                        sample_control.observation
+                    )
+                )
+
+            zs_list.insert(0, z)
+            as_list.insert(0, a)
             means.insert(0, mean_t)
             covariances.insert(0, cov_t)
 
-        return torch.stack(means), torch.stack(covariances)
+        return (
+            torch.stack(means),
+            torch.stack(covariances),
+            torch.stack(zs_list),
+            torch.stack(as_list),
+        )
 
     def state_transition_log_likelihood(self, zs, mat_As):
         sequence_length, batch_size, _, _ = zs.size()
