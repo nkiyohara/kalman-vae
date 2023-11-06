@@ -158,11 +158,32 @@ class StateSpaceModel(nn.Module):
             )
         self._mat_C_K = nn.Parameter(value)
 
-    def kalman_filter(self, as_, learn_weight_model=True, symmetrize_covariance=True, burn_in=0):
+    def kalman_filter(self, as_, sample_control: SampleControl, learn_weight_model=True, symmetrize_covariance=True, burn_in=0):
         # as_: a_0, a_1, ..., a_{T-1}
         # shape: (sequence_length, batch_size, a_dim)
 
         sequence_length, batch_size = as_.size()[:2]
+
+        if observation_mask is None:
+            if learn_weight_model:
+                weights = self.weight_model(as_)
+            else:
+                weights = self.weight_model(as_).detach()
+
+            # Add a uniform weight to the first time step
+            weights = torch.cat(
+                [torch.ones(1, batch_size, self.K).to(weights.device), weights], dim=0
+            )
+
+            # w_0, w_1, ..., w_T
+            # Shape of weights is (sequence_length + 1, batch_size, K)
+            # Shape of mat_As and mat_Cs is (sequence_length + 1, batch_size, z_dim, z_dim)
+            # A_0, A_1, ..., A_T
+            mat_As = torch.einsum("tbk,kij->tbij", weights, self.mat_A_K)
+            # C_0, C_1, ..., C_T
+            mat_Cs = torch.einsum("tbk,kij->tbij", weights, self.mat_C_K)
+        else:
+            weight_next = torch.ones(1, batch_size, self.K).to(as_.device)
 
         # Initial state estimate: \hat{z}_{0|-1}
         # shape: (batch_size, z_dim, 1)
@@ -173,24 +194,6 @@ class StateSpaceModel(nn.Module):
         # Initial state covariance: \Sigma_{0|-1}
         # shape: (batch_size, z_dim, z_dim)
         cov_t_plus = self.initial_state_covariance.unsqueeze(0).repeat(batch_size, 1, 1)
-
-        if learn_weight_model:
-            weights = self.weight_model(as_)
-        else:
-            weights = self.weight_model(as_).detach()
-
-        # Add a uniform weight to the first time step
-        weights = torch.cat(
-            [torch.ones(1, batch_size, self.K).to(weights.device), weights], dim=0
-        )
-
-        # w_0, w_1, ..., w_T
-        # Shape of weights is (sequence_length + 1, batch_size, K)
-        # Shape of mat_As and mat_Cs is (sequence_length + 1, batch_size, z_dim, z_dim)
-        # A_0, A_1, ..., A_T
-        mat_As = torch.einsum("tbk,kij->tbij", weights, self.mat_A_K)
-        # C_0, C_1, ..., C_T
-        mat_Cs = torch.einsum("tbk,kij->tbij", weights, self.mat_C_K)
 
         # \hat{z}_{0|0}, \hat{z}_{1|1}, ..., \hat{z}_{T-1|T-1}
         means = []
@@ -204,23 +207,66 @@ class StateSpaceModel(nn.Module):
         # \Sigma_{1|0}, \Sigma_{2|1}, ..., \Sigma_{T|T-1}
         next_covariances = []
 
+        mat_As_list = []
+        mat_Cs_list = []
+
         for t in range(sequence_length):
+
+            if observation_mask is None:
+                mat_A_next = mat_As[t + 1]
+                mat_C = mat_Cs[t]
+            else:
+                z_next_distrib = D.MultivariateNormal(mean_t_plus.view(-1, self.z_dim), cov_t_plus)
+                if sample_control.state_transition == "sample":
+                    z_next = z_next_distrib.sample()
+                elif sample_control.state_transition == "mean":
+                    z_next = z_next_distrib.mean
+                else:
+                    raise ValueError("Invalid sample_control.state_transition: {}".format(sample_control.state_transition))
+                
+                weight = weight_next
+
+                if t == 0:
+                    mat_A = torch.einsum("bk,kij->bij", weight, self.mat_A_K)
+                else:
+                    mat_A = mat_A_next
+                mat_C = torch.einsum("bk,kij->bij", weight, self.mat_C_K)
+
+                observation_noise_distrib = D.MultivariateNormal(torch.zeros(self.a_dim), self.mat_R)
+                if sample_control.observation == "sample":
+                    a_pred = mat_C @ z_next.unsqueeze(-1) + observation_noise_distrib.rsample()
+                elif sample_control.observation == "mean":
+                    a_pred = mat_C @ z_next.unsqueeze(-1) + observation_noise_distrib.mean
+                else:
+                    raise ValueError("Invalid sample_control.observation: {}".format(sample_control.observation))
+                a = as_[t:t + 1] * observation_mask[t:t + 1] + a_pred * (1.0 - observation_mask[t:t + 1])
+
+                if learn_weight_model:
+                    weight_next = self.weight_model(a)
+                else:
+                    weight_next = self.weight_model(a).detach()
+
+                mat_A_next = torch.einsum("bk,kij->bij", weight_next, self.mat_A_K)
+
+                mat_As_list.append(mat_A)
+                mat_Cs_list.append(mat_C)
+            
             # Kalman gain
             # K_0, K_1, ..., K_{T-1}
             K_t = (
                 cov_t_plus
-                @ mat_Cs[t].transpose(1, 2)
+                @ mat_C.transpose(1, 2)
                 @ torch.inverse(
-                    mat_Cs[t] @ cov_t_plus @ mat_Cs[t].transpose(1, 2) + self.mat_R
+                    mat_C @ cov_t_plus @ mat_C.transpose(1, 2) + self.mat_R
                 )
             )
 
             # \hat{z}_{0|0}, \hat{z}_{1|1}, ..., \hat{z}_{T-1|T-1}
             mean_t = mean_t_plus + K_t @ (
-                as_[t].unsqueeze(2) - mat_Cs[t] @ mean_t_plus
+                as_[t].unsqueeze(2) - mat_C @ mean_t_plus
             )  # Updated state estimate
             # z_{1|0}, z_{2|1}, ..., z_{T|T-1}
-            mean_t_plus = mat_As[t+1] @ mean_t  # Predicted state estimate
+            mean_t_plus = mat_A_next @ mean_t  # Predicted state estimate
 
             # \Sigma_{0|0}, \Sigma_{1|1}, ..., \Sigma_{T-1|T-1}
             cov_t = (
@@ -232,7 +278,7 @@ class StateSpaceModel(nn.Module):
 
             # \Sigma_{1|0}, \Sigma_{2|1}, ..., \Sigma_{T|T-1}
             cov_t_plus = (
-                mat_As[t+1] @ cov_t @ mat_As[t+1].transpose(1, 2) + self.mat_Q
+                mat_A_next @ cov_t @ mat_A_next.transpose(1, 2) + self.mat_Q
             )  # Predicted state covariance
 
             if symmetrize_covariance:
@@ -248,6 +294,14 @@ class StateSpaceModel(nn.Module):
             covariances.append(cov_t)
             next_means.append(mean_t_plus)
             next_covariances.append(cov_t_plus)
+        
+        if observation_mask is not None:
+            mat_As_list = mat_As_list.append(mat_A_next)
+            mat_Cs_list = mat_Cs_list.append(mat_C_next)
+
+            mat_As = torch.stack(mat_As_list, dim=0)
+            mat_Cs = torch.stack(mat_Cs_list, dim=0)
+
 
         return means, covariances, next_means, next_covariances, mat_As, mat_Cs
 
@@ -328,7 +382,7 @@ class StateSpaceModel(nn.Module):
 
         return state_transition_log_likelihood
     
-    def predict_future(self, as_, means, covariances, next_means, next_covariances, mat_As, mat_Cs, num_steps, sample=False):
+    def predict_future(self, as_, means, covariances, next_means, next_covariances, mat_As, mat_Cs, num_steps, sample_control: SampleControl):
         # as_: a_0, a_1, ..., a_{T-1}
         # shape: (sequence_length, batch_size, a_dim)
 
@@ -352,10 +406,12 @@ class StateSpaceModel(nn.Module):
 
             next_z_distrib = D.MultivariateNormal(next_means[-1].view(-1, self.z_dim), next_covariances[-1])
 
-            if sample:
+            if sample_control.state_transition == "sample":
                 next_z = next_z_distrib.sample()
-            else:
+            elif sample_control.state_transition == "mean":
                 next_z = next_z_distrib.mean
+            else:
+                raise ValueError("Invalid sample_control.state_transition: {}".format(sample_control.state_transition))
             
             next_a = mat_Cs_list[t] @ next_z.unsqueeze(-1)
             as_list.append(next_a.view(batch_size, self.a_dim))
@@ -366,9 +422,10 @@ class StateSpaceModel(nn.Module):
             mat_As_list.append(mat_A)
             mat_Cs_list.append(mat_C)
             next_mean = mat_A @ next_means[-1]
-            if sample:
+            if sample_control.state_transition == "sample":
                 next_covariance = self.mat_Q
-            else:
+            elif sample_control.state_transition == "mean":
+                # TODO: This should be considered later
                 next_covariance = mat_A @ next_covariances[-1] @ mat_A.transpose(1, 2) + self.mat_Q
             next_covariance = (next_covariance + next_covariance.transpose(1, 2)) / 2.0
             next_means.append(next_mean)

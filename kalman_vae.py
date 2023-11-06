@@ -5,6 +5,7 @@ import torch.nn.functional as F
 
 from ssm import StateSpaceModel
 from vae import BernoulliDecoder, Encoder, GaussianDecoder
+from sample_control import SampleControl
 
 
 class KalmanVariationalAutoencoder(nn.Module):
@@ -71,6 +72,7 @@ class KalmanVariationalAutoencoder(nn.Module):
     def elbo(
         self,
         xs,
+        sample_control: SampleControl,
         reconst_weight=0.3,
         regularization_weight=1.0,
         kalman_weight=1.0,
@@ -83,7 +85,12 @@ class KalmanVariationalAutoencoder(nn.Module):
         batch_size = xs.shape[1]
 
         as_dist = self.encoder(xs.reshape(-1, *xs.shape[2:]))
-        as_sample = as_dist.rsample().view(seq_length, batch_size, self.a_dim)
+        if sample_control.encoder == "sample":
+            as_sample = as_dist.rsample().view(seq_length, batch_size, self.a_dim)
+        else:
+            raise ValueError(
+                "Invalid sample control for encoder: {}".format(sample_control.encoder)
+            )
 
         # Reconstruction objective
         xs_dist = self.decoder(as_sample.view(-1, self.a_dim))
@@ -210,7 +217,7 @@ class KalmanVariationalAutoencoder(nn.Module):
         self,
         xs,
         num_steps,
-        sample=False,
+        sample_control: SampleControl,
         symmetrize_covariance=True,
     ):
         seq_length = xs.shape[0]
@@ -218,10 +225,14 @@ class KalmanVariationalAutoencoder(nn.Module):
 
         as_dist = self.encoder(xs.reshape(-1, *xs.shape[2:]))
 
-        if sample:
+        if sample_control.encoder == "sample":
             as_ = as_dist.sample().view(seq_length, batch_size, self.a_dim)
-        else:
+        elif sample_control.encoder == "mean":
             as_ = as_dist.mean.view(seq_length, batch_size, self.a_dim)
+        else:
+            raise ValueError(
+                "Invalid sample control for encoder: {}".format(sample_control.encoder)
+            )
 
         # Kalman filter and smoother
         (
@@ -248,16 +259,21 @@ class KalmanVariationalAutoencoder(nn.Module):
         )
 
         as_, means, covariances, filter_next_means, filter_next_covariances, mat_As, mat_Cs = self.state_space_model.predict_future(
-            as_, means, covariances, filter_next_means, filter_next_covariances, mat_As, mat_Cs, num_steps, sample=sample
+            as_, means, covariances, filter_next_means, filter_next_covariances, mat_As, mat_Cs, num_steps, sample_control=sample_control
         )
 
         # shape of as_: (sequence_length + num_steps, batch_size, a_dim, 1)
         xs_dist = self.decoder(as_.view(-1, self.a_dim))
         
-        if sample:
+        if sample_control.decoder == "sample":
             xs = xs_dist.sample()
-        else:
+        elif sample_control.decoder == "mean":
             xs = xs_dist.mean
+        else:
+            raise ValueError(
+                "Invalid sample control for decoder: {}".format(sample_control.decoder)
+            )
+
         xs = xs.view(seq_length + num_steps, batch_size, *xs.shape[1:])
 
         return xs, {
