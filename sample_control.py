@@ -1,4 +1,5 @@
 from typing import NamedTuple
+
 from typing_extensions import Literal
 
 
@@ -10,8 +11,15 @@ class SampleControl(NamedTuple):
 
     @classmethod
     def training_defaults(cls):
-        return cls(encoder="sample", decoder="sample", state_transition="sample", observation="sample")
+        return cls(
+            encoder="sample",
+            decoder="sample",
+            state_transition="sample",
+            observation="sample",
+        )
 
     @classmethod
     def evaluation_defaults(cls):
-        return cls(encoder="mean", decoder="mean", state_transition="mean", observation="mean")
+        return cls(
+            encoder="mean", decoder="mean", state_transition="mean", observation="mean"
+        )
