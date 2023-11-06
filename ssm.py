@@ -3,6 +3,7 @@ import torch.distributions as D
 import torch.nn as nn
 import torch.nn.functional as F
 
+from sample_control import SampleControl
 
 class LSTMModel(nn.Module):
     def __init__(self, a_dim, K, hidden_dim, num_layers):
@@ -158,7 +159,7 @@ class StateSpaceModel(nn.Module):
             )
         self._mat_C_K = nn.Parameter(value)
 
-    def kalman_filter(self, as_, sample_control: SampleControl, learn_weight_model=True, symmetrize_covariance=True, burn_in=0):
+    def kalman_filter(self, as_, sample_control: SampleControl, observation_mask=None, learn_weight_model=True, symmetrize_covariance=True, burn_in=0):
         # as_: a_0, a_1, ..., a_{T-1}
         # shape: (sequence_length, batch_size, a_dim)
 
@@ -296,6 +297,8 @@ class StateSpaceModel(nn.Module):
             next_covariances.append(cov_t_plus)
         
         if observation_mask is not None:
+            mat_C_next = torch.einsum("bk,kij->bij", weight_next, self.mat_C_K)
+
             mat_As_list = mat_As_list.append(mat_A_next)
             mat_Cs_list = mat_Cs_list.append(mat_C_next)
 
