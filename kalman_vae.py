@@ -214,6 +214,14 @@ class KalmanVariationalAutoencoder(nn.Module):
             "kalman_posterior_log_likelihood": kalman_posterior_log_likelihood.cpu()
             .detach()
             .numpy(),
+            "filter_means": filter_means,
+            "filter_covariances": filter_covariances,
+            "filter_next_means": filter_next_means,
+            "filter_next_covariances": filter_next_covariances,
+            "mat_As": mat_As,
+            "mat_Cs": mat_Cs,
+            "means": means,
+            "covariances": covariances,
         }
 
     def predict_future(

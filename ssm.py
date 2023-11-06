@@ -192,7 +192,7 @@ class StateSpaceModel(nn.Module):
 
             # Add a uniform weight to the first time step
             weights = torch.cat(
-                [torch.ones(1, batch_size, self.K).to(weights.device), weights], dim=0
+                [torch.ones(1, batch_size, self.K, device=weights.device, dtype=weights.dtype), weights], dim=0
             )
 
             # w_0, w_1, ..., w_T
@@ -203,7 +203,7 @@ class StateSpaceModel(nn.Module):
             # C_0, C_1, ..., C_T
             mat_Cs = torch.einsum("tbk,kij->tbij", weights, self.mat_C_K)
         else:
-            weight_next = torch.ones(batch_size, self.K).to(as_.device)
+            weight_next = torch.ones(1, batch_size, self.K, device=as_.device, dtype=as_.dtype)
 
         # Initial state estimate: \hat{z}_{0|-1}
         # shape: (batch_size, z_dim, 1)
@@ -239,7 +239,7 @@ class StateSpaceModel(nn.Module):
                     mean_t_plus.view(-1, self.z_dim), cov_t_plus
                 )
                 if sample_control.state_transition == "sample":
-                    z_next = z_next_distrib.sample()
+                    z_next = z_next_distrib.rsample()
                 elif sample_control.state_transition == "mean":
                     z_next = z_next_distrib.mean
                 else:
@@ -248,35 +248,31 @@ class StateSpaceModel(nn.Module):
                             sample_control.state_transition
                         )
                     )
+                # shape of z_next: (batch_size, z_dim)
 
                 weight = weight_next
 
                 if t == 0:
-                    mat_A = torch.einsum("bk,kij->bij", weight, self.mat_A_K)
+                    mat_A = torch.einsum("tbk,kij->bij", weight, self.mat_A_K)
                 else:
                     mat_A = mat_A_next
-                mat_C = torch.einsum("bk,kij->bij", weight, self.mat_C_K)
+                mat_C = torch.einsum("tbk,kij->bij", weight, self.mat_C_K)
 
-                observation_noise_distrib = D.MultivariateNormal(
-                    torch.zeros(self.a_dim), self.mat_R
-                )
+                a_distrib = D.MultivariateNormal(
+                        torch.bmm(mat_C, z_next.unsqueeze(-1)).squeeze(-1), self.mat_R
+                    )
                 if sample_control.observation == "sample":
-                    a_pred = (
-                        mat_C @ z_next.unsqueeze(-1)
-                        + observation_noise_distrib.rsample()
-                    )
+                    a_pred = a_distrib.rsample()
                 elif sample_control.observation == "mean":
-                    a_pred = (
-                        mat_C @ z_next.unsqueeze(-1) + observation_noise_distrib.mean
-                    )
+                    a_pred = a_distrib.mean
                 else:
                     raise ValueError(
                         "Invalid sample_control.observation: {}".format(
                             sample_control.observation
                         )
                     )
-                a = as_[t : t + 1] * observation_mask[t : t + 1] + a_pred * (
-                    1.0 - observation_mask[t : t + 1]
+                a = as_[t : t + 1] * observation_mask[t : t + 1].unsqueeze(-1) + a_pred.unsqueeze(0) * (
+                    1.0 - observation_mask[t : t + 1].unsqueeze(-1)
                 )
 
                 if learn_weight_model:
@@ -284,7 +280,7 @@ class StateSpaceModel(nn.Module):
                 else:
                     weight_next = self.weight_model(a).detach()
 
-                mat_A_next = torch.einsum("bk,kij->bij", weight_next, self.mat_A_K)
+                mat_A_next = torch.einsum("tbk,kij->bij", weight_next, self.mat_A_K)
 
                 mat_As_list.append(mat_A)
                 mat_Cs_list.append(mat_C)
@@ -306,7 +302,7 @@ class StateSpaceModel(nn.Module):
 
             # \Sigma_{0|0}, \Sigma_{1|1}, ..., \Sigma_{T-1|T-1}
             cov_t = (
-                cov_t_plus - K_t @ mat_Cs[t] @ cov_t_plus
+                cov_t_plus - K_t @ mat_C @ cov_t_plus
             )  # Updated state covariance
 
             if symmetrize_covariance:
@@ -332,10 +328,10 @@ class StateSpaceModel(nn.Module):
             next_covariances.append(cov_t_plus)
 
         if observation_mask is not None:
-            mat_C_next = torch.einsum("bk,kij->bij", weight_next, self.mat_C_K)
+            mat_C_next = torch.einsum("tbk,kij->bij", weight_next, self.mat_C_K)
 
-            mat_As_list = mat_As_list.append(mat_A_next)
-            mat_Cs_list = mat_Cs_list.append(mat_C_next)
+            mat_As_list.append(mat_A_next)
+            mat_Cs_list.append(mat_C_next)
 
             mat_As = torch.stack(mat_As_list, dim=0)
             mat_Cs = torch.stack(mat_Cs_list, dim=0)
