@@ -114,6 +114,7 @@ class KalmanVariationalAutoencoder(nn.Module):
             mat_Cs,
         ) = self.state_space_model.kalman_filter(
             as_sample,
+            sample_control=sample_control,
             learn_weight_model=learn_weight_model,
             symmetrize_covariance=symmetrize_covariance,
             burn_in=burn_in,
