@@ -237,7 +237,6 @@ class KalmanVariationalAutoencoder(nn.Module):
             "filter_covariances": filter_covariances,
             "filter_next_means": filter_next_means,
             "filter_next_covariances": filter_next_covariances,
-            "filter_as": filter_as,
             "mat_As": mat_As,
             "mat_Cs": mat_Cs,
             "means": means,

@@ -420,8 +420,8 @@ class StateSpaceModel(nn.Module):
         return (
             torch.stack(means),
             torch.stack(covariances),
-            torch.stack(zs_list),
-            torch.stack(as_list),
+            torch.cat(zs_list),
+            torch.cat(as_list),
         )
 
     def state_transition_log_likelihood(self, zs, mat_As):
