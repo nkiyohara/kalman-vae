@@ -138,8 +138,8 @@ class KalmanVariationalAutoencoder(nn.Module):
             symmetrize_covariance=symmetrize_covariance,
             burn_in=burn_in,
         )
-        means, covariances, zs, as_ = self.state_space_model.kalman_smooth(
-            filter_as,
+        means, covariances, zs, as_resampled = self.state_space_model.kalman_smooth(
+            as_,
             filter_means=filter_means,
             filter_covariances=filter_covariances,
             filter_next_means=filter_next_means,
@@ -244,6 +244,8 @@ class KalmanVariationalAutoencoder(nn.Module):
             "covariances": covariances,
             "as": as_,
             "zs": zs,
+            "filter_as": filter_as,
+            "as_resampled": as_resampled,
         }
 
     def predict_future(
