@@ -255,6 +255,8 @@ class KalmanVariationalAutoencoder(nn.Module):
         sample_control: SampleControl,
         symmetrize_covariance=True,
     ):
+        # TODO: It's too dirty to feed the same data to the encoder
+
         seq_length = xs.shape[0]
         batch_size = xs.shape[1]
 
@@ -277,13 +279,14 @@ class KalmanVariationalAutoencoder(nn.Module):
             filter_next_covariances,
             mat_As,
             mat_Cs,
+            as_filter,
         ) = self.state_space_model.kalman_filter(
             as_,
             sample_control=sample_control,
             learn_weight_model=False,
             symmetrize_covariance=symmetrize_covariance,
         )
-        means, covariances = self.state_space_model.kalman_smooth(
+        means, covariances, zs, as_resampled = self.state_space_model.kalman_smooth(
             as_,
             filter_means=filter_means,
             filter_covariances=filter_covariances,
@@ -332,8 +335,12 @@ class KalmanVariationalAutoencoder(nn.Module):
             "as": as_,
             "means": means,
             "covariances": covariances,
+            "filter_means": filter_means,
+            "filter_covariances": filter_covariances,
             "filter_next_means": filter_next_means,
             "filter_next_covariances": filter_next_covariances,
             "mat_As": mat_As,
             "mat_Cs": mat_Cs,
+            "as_filter": as_filter,
+            "as_resampled": as_resampled,
         }
