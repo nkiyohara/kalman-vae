@@ -146,6 +146,7 @@ class KalmanVariationalAutoencoder(nn.Module):
             filter_next_covariances=filter_next_covariances,
             mat_As=mat_As,
             mat_Cs=mat_Cs,
+            sample_control=sample_control,
             symmetrize_covariance=symmetrize_covariance,
             burn_in=burn_in,
         )
