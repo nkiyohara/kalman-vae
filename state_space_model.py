@@ -205,7 +205,7 @@ class StateSpaceModel(nn.Module):
 
         for t in range(sequence_length):
             z_next_distrib = D.MultivariateNormal(
-                mean_t_plus.view(-1, self.z_dim), cov_t_plus
+                mean_t_plus.view(batch_size, self.z_dim), cov_t_plus
             )
             if sample_control.state_transition == "sample":
                 z_next = z_next_distrib.rsample()
@@ -272,7 +272,7 @@ class StateSpaceModel(nn.Module):
 
             # \hat{z}_{0|0}, \hat{z}_{1|1}, ..., \hat{z}_{T-1|T-1}
             mean_t = mean_t_plus + K_t @ (
-                as_[t].unsqueeze(2) - mat_C @ mean_t_plus
+                a.unsqueeze(2) - mat_C @ mean_t_plus
             )  # Updated state estimate
             # z_{1|0}, z_{2|1}, ..., z_{T|T-1}
             mean_t_plus = mat_A_next @ mean_t  # Predicted state estimate
@@ -386,7 +386,7 @@ class StateSpaceModel(nn.Module):
                 mean_t = mean_t.detach()
                 cov_t = cov_t.detach()
 
-            z_distrib = D.MultivariateNormal(mean_t.view(-1, self.z_dim), cov_t)
+            z_distrib = D.MultivariateNormal(mean_t.view(batch_size, self.z_dim), cov_t)
             if sample_control.state_transition == "sample":
                 z = z_distrib.rsample()
             elif sample_control.state_transition == "mean":
