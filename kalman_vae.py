@@ -295,6 +295,7 @@ class KalmanVariationalAutoencoder(nn.Module):
             mat_As=mat_As,
             mat_Cs=mat_Cs,
             symmetrize_covariance=symmetrize_covariance,
+            sample_control=sample_control,
         )
 
         (
