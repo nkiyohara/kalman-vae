@@ -33,7 +33,9 @@ class KalmanVariationalAutoencoder(nn.Module):
         self.z_dim = z_dim
         self.register_buffer("_zero_val", torch.tensor(0.0))
 
-    def get_distribution_params(self, xs, symmetrize_covariance=True):
+    def get_distribution_params(
+        self, xs, sample_control: SampleControl, symmetrize_covariance=True
+    ):
         """Returns the parameters of the distribution over the latent variables"""
 
         seq_length = xs.shape[0]
@@ -53,6 +55,7 @@ class KalmanVariationalAutoencoder(nn.Module):
         ) = self.state_space_model.kalman_filter(
             as_sample,
             learn_weight_model=False,
+            sample_control=sample_control,
             symmetrize_covariance=symmetrize_covariance,
         )
         means, covariances = self.state_space_model.kalman_smooth(

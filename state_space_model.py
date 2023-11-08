@@ -172,15 +172,14 @@ class StateSpaceModel(nn.Module):
         self.weight_model.clear_hidden_state()
 
         # Initial weight
-        weight_next = torch.ones(
-            1, batch_size, self.K, device=as_.device, dtype=as_.dtype
+        weight_next = (
+            torch.ones(1, batch_size, self.K, device=as_.device, dtype=as_.dtype)
+            / self.K
         )
 
         # Initial state estimate: \hat{z}_{0|-1}
-        # shape: (batch_size, z_dim, 1)
-        mean_t_plus = (
-            self.initial_state_mean.unsqueeze(0).repeat(batch_size, 1).unsqueeze(2)
-        )
+        # shape: (batch_size, z_dim)
+        mean_t_plus = self.initial_state_mean.repeat(batch_size, 1)
 
         # Initial state covariance: \Sigma_{0|-1}
         # shape: (batch_size, z_dim, z_dim)
@@ -204,9 +203,7 @@ class StateSpaceModel(nn.Module):
         mat_Cs_list = []
 
         for t in range(sequence_length):
-            z_next_distrib = D.MultivariateNormal(
-                mean_t_plus.view(batch_size, self.z_dim), cov_t_plus
-            )
+            z_next_distrib = D.MultivariateNormal(mean_t_plus, cov_t_plus)
             if sample_control.state_transition == "sample":
                 z_next = z_next_distrib.rsample()
             elif sample_control.state_transition == "mean":
@@ -269,11 +266,15 @@ class StateSpaceModel(nn.Module):
             )
 
             # \hat{z}_{0|0}, \hat{z}_{1|1}, ..., \hat{z}_{T-1|T-1}
-            mean_t = mean_t_plus + K_t @ (
-                a.unsqueeze(2) - mat_C @ mean_t_plus
+            mean_t = mean_t_plus + torch.bmm(
+                K_t, (a.unsqueeze(-1) - torch.bmm(mat_C, mean_t_plus.unsqueeze(-1)))
+            ).squeeze(
+                -1
             )  # Updated state estimate
             # z_{1|0}, z_{2|1}, ..., z_{T|T-1}
-            mean_t_plus = mat_A_next @ mean_t  # Predicted state estimate
+            mean_t_plus = torch.bmm(mat_A_next, mean_t.unsqueeze(-1)).squeeze(
+                -1
+            )  # Predicted state estimate
 
             # \Sigma_{0|0}, \Sigma_{1|1}, ..., \Sigma_{T-1|T-1}
             cov_t = cov_t_plus - K_t @ mat_C @ cov_t_plus  # Updated state covariance
@@ -308,7 +309,7 @@ class StateSpaceModel(nn.Module):
         mat_As = torch.stack(mat_As_list, dim=0)
         mat_Cs = torch.stack(mat_Cs_list, dim=0)
 
-        as_ = torch.cat(as_list, dim=0)
+        as_ = torch.stack(as_list, dim=0)
 
         return means, covariances, next_means, next_covariances, mat_As, mat_Cs, as_
 
@@ -325,7 +326,6 @@ class StateSpaceModel(nn.Module):
         symmetrize_covariance=True,
         burn_in=0,
     ):
-        # import pdb; pdb.set_trace()
         sequence_length, batch_size, _ = as_.size()
 
         means = [filter_means[-1]]  # \hat{z}_{T-1|T-1}
@@ -371,7 +371,9 @@ class StateSpaceModel(nn.Module):
             )
 
             # \hat{z}_{T-2}, \hat{z}_{T-3}, ..., \hat{z}_0
-            mean_t = filter_means[t] + J_t @ (means[0] - filter_next_means[t])
+            mean_t = filter_means[t] + torch.bmm(
+                J_t, (means[0] - filter_next_means[t]).unsqueeze(-1)
+            ).squeeze(-1)
             # \Sigma_{T-2}, \Sigma_{T-3}, ..., \Sigma_0
             cov_t = filter_covariances[t] + J_t @ (
                 covariances[0] - filter_next_covariances[t]
