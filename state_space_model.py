@@ -242,20 +242,18 @@ class StateSpaceModel(nn.Module):
                 )
 
             if observation_mask is None:
-                a = as_[t : t + 1]
+                a = as_[t]
             else:
-                a = as_[t : t + 1] * observation_mask[t : t + 1].unsqueeze(
-                    -1
-                ) + a_pred.unsqueeze(0) * (
-                    1.0 - observation_mask[t : t + 1].unsqueeze(-1)
+                a = as_[t] * observation_mask[t].view(batch_size, 1) + a_pred * (
+                    1.0 - observation_mask[t].view(batch_size, 1)
                 )
 
             as_list.append(a)
 
             if learn_weight_model:
-                weight_next = self.weight_model(a)
+                weight_next = self.weight_model(a.unsqueeze(0))
             else:
-                weight_next = self.weight_model(a).detach()
+                weight_next = self.weight_model(a.unsqueeze(0)).detach()
 
             mat_A_next = torch.einsum("tbk,kij->bij", weight_next, self.mat_A_K)
 
@@ -425,7 +423,7 @@ class StateSpaceModel(nn.Module):
         )
 
     def state_transition_log_likelihood(self, zs, mat_As):
-        sequence_length, batch_size, _, _ = zs.size()
+        sequence_length, batch_size, _ = zs.size()
 
         # Initial state estimate: \hat{z}_{0|-1}
         mean_t_plus = (
@@ -443,7 +441,7 @@ class StateSpaceModel(nn.Module):
                 zs[t].view(-1, self.z_dim)
             ).sum()
 
-            mean_t_plus = mat_As[t + 1] @ zs[t]
+            mean_t_plus = mat_As[t + 1] @ zs[t].unsqueeze(-1)
             cov_t_plus = self.mat_Q
 
             # else:
@@ -497,7 +495,7 @@ class StateSpaceModel(nn.Module):
             )
 
             if sample_control.state_transition == "sample":
-                next_z = next_z_distrib.sample()
+                next_z = next_z_distrib.rsample()
             elif sample_control.state_transition == "mean":
                 next_z = next_z_distrib.mean
             else:

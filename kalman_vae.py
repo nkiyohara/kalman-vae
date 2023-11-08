@@ -112,13 +112,21 @@ class KalmanVariationalAutoencoder(nn.Module):
         # Reconstruction objective
         xs_distrib = self.decoder(as_.view(-1, self.a_dim))
         reconstruction_obj = (
-            xs_distrib.log_prob(xs.reshape(-1, *xs.shape[2:])).view(seq_length, batch_size, *xs.shape[2:]).sum(0).mean(0).sum()
+            xs_distrib.log_prob(xs.reshape(-1, *xs.shape[2:]))
+            .view(seq_length, batch_size, *xs.shape[2:])
+            .sum(0)
+            .mean(0)
+            .sum()
         )
 
         # Regularization objective
         # -ln q_\phi(a|x)
         regularization_obj = (
-            -as_distrib.log_prob(as_.view(-1, self.a_dim)).view(seq_length, batch_size, self.a_dim).sum(0).mean(0).sum()
+            -as_distrib.log_prob(as_.view(-1, self.a_dim))
+            .view(seq_length, batch_size, self.a_dim)
+            .sum(0)
+            .mean(0)
+            .sum()
         )
 
         # Kalman filter and smoother
@@ -155,14 +163,19 @@ class KalmanVariationalAutoencoder(nn.Module):
         # Shape of means: (sequence_length, batch_size, z_dim, 1)
         # Shape of covariances: (sequence_length, batch_size, z_dim, z_dim)
         zs_distrib = D.MultivariateNormal(
-            means.view(seq_length, batch_size, self.z_dim), covariances.view(seq_length, batch_size, self.z_dim, self.z_dim)
+            means.view(seq_length, batch_size, self.z_dim),
+            covariances.view(seq_length, batch_size, self.z_dim, self.z_dim),
         )
 
         # KL divergence between q_\phi(a|x) and p(z) for VAE validation purposes
         if kl_weight != 0.0:
-            prior_distrib = D.Normal(torch.zeros(self.a_dim), torch.ones(self.a_dim))
+            prior_distrib = D.Normal(
+                torch.zeros(self.a_dim, dtype=xs.dtype, device=xs.device),
+                torch.ones(self.a_dim, dtype=xs.dtype, device=xs.device),
+            )
             kl_reg = (
                 -torch.distributions.kl.kl_divergence(as_distrib, prior_distrib)
+                .view(seq_length, batch_size, self.a_dim)
                 .sum(0)
                 .mean(0)
                 .sum(0)
@@ -177,7 +190,8 @@ class KalmanVariationalAutoencoder(nn.Module):
 
         # ln p_\gamma(a|z)
         kalman_observation_distrib = D.MultivariateNormal(
-            (mat_Cs[:-1] @ zs_sample).view(-1, self.a_dim), self.state_space_model.mat_R
+            (mat_Cs[:-1] @ zs_sample.unsqueeze(-1)).view(-1, self.a_dim),
+            self.state_space_model.mat_R,
         )
         kalman_observation_log_likelihood = (
             kalman_observation_distrib.log_prob(as_.view(-1, self.a_dim))
@@ -193,13 +207,7 @@ class KalmanVariationalAutoencoder(nn.Module):
         )
 
         # ln p_\gamma(z|a)
-        kalman_posterior_log_likelihood = (
-            zs_distrib.log_prob(zs_sample.view(-1, self.z_dim))
-            .view(seq_length, batch_size, -1)
-            .sum(0)
-            .mean(0)
-            .sum()
-        )
+        kalman_posterior_log_likelihood = zs_distrib.log_prob(zs_sample).sum(0).mean(0)
 
         objective = (
             reconst_weight * reconstruction_obj
