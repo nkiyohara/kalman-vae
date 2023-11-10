@@ -1,13 +1,18 @@
-from typing import Literal
+import logging
+from math import e
+from typing import Literal, Optional
 
 import torch
 import torch.distributions as D
 import torch.nn as nn
 import torch.nn.functional as F
 
+from misc import _validate_shape, aggregate
 from sample_control import SampleControl
 from state_space_model import StateSpaceModel
-from variationa_autoencoder import BernoulliDecoder, Encoder, GaussianDecoder
+from variational_autoencoder import BernoulliDecoder, Encoder, GaussianDecoder
+
+logger = logging.getLogger(__name__)
 
 
 class KalmanVariationalAutoencoder(nn.Module):
@@ -82,8 +87,9 @@ class KalmanVariationalAutoencoder(nn.Module):
 
     def elbo(
         self,
-        xs,
         sample_control: SampleControl,
+        xs: Optional[torch.Tensor] = None,
+        as_: Optional[torch.Tensor] = None,
         observation_mask=None,
         reconst_weight=0.3,
         regularization_weight=1.0,
@@ -93,44 +99,63 @@ class KalmanVariationalAutoencoder(nn.Module):
         symmetrize_covariance=True,
         burn_in=0,
     ):
-        seq_length = xs.shape[0]
-        batch_size = xs.shape[1]
+        if as_ is None and xs is None:
+            raise ValueError("Either as_ or xs must be provided")
+        elif as_ is None and xs is not None:
+            seq_length = xs.shape[0]
+            batch_size = xs.shape[1]
 
-        as_distrib = self.encoder(xs.reshape(-1, *xs.shape[2:]))
-        if sample_control.encoder == "sample":
-            as_ = as_distrib.rsample().view(seq_length, batch_size, self.a_dim)
-        elif sample_control.encoder == "mean":
-            if self.training:
+            as_distrib = self.encoder(xs.reshape(-1, *xs.shape[2:]))
+            if sample_control.encoder == "sample":
+                as_ = as_distrib.rsample().view(seq_length, batch_size, self.a_dim)
+            elif sample_control.encoder == "mean":
+                if self.training:
+                    raise ValueError(
+                        "Invalid sample control for encoder: {}".format(
+                            sample_control.encoder
+                        )
+                    )
+                as_ = as_distrib.mean.view(seq_length, batch_size, self.a_dim)
+            else:
                 raise ValueError(
                     "Invalid sample control for encoder: {}".format(
                         sample_control.encoder
                     )
                 )
-            as_ = as_distrib.mean.view(seq_length, batch_size, self.a_dim)
+        elif as_ is not None and xs is None:
+            seq_length = as_.shape[0]
+            batch_size = as_.shape[1]
+            _validate_shape(as_, (seq_length, batch_size, self.a_dim), "as_")
+            reconst_weight = 0.0
+            logger.info("reconst_weight = 0.0")
+            regularization_weight = 0.0
+            logger.info("regularization_weight = 0.0")
+            kl_weight = 0.0
+            logger.info("kl_weight = 0.0")
         else:
-            raise ValueError(
-                "Invalid sample control for encoder: {}".format(sample_control.encoder)
-            )
+            raise ValueError("Only one of as_ and xs must be provided")
 
         # Reconstruction objective
-        xs_distrib = self.decoder(as_.view(-1, self.a_dim))
-        reconstruction_obj = (
-            xs_distrib.log_prob(xs.reshape(-1, *xs.shape[2:]))
-            .view(seq_length, batch_size, *xs.shape[2:])
-            .sum(0)
-            .mean(0)
-            .sum()
-        )
 
-        # Regularization objective
-        # -ln q_\phi(a|x)
-        regularization_obj = (
-            -as_distrib.log_prob(as_.view(-1, self.a_dim))
-            .view(seq_length, batch_size, self.a_dim)
-            .sum(0)
-            .mean(0)
-            .sum()
-        )
+        if xs is not None:
+            xs_distrib = self.decoder(as_.view(-1, self.a_dim))
+            reconstruction_obj = aggregate(
+                xs_distrib.log_prob(xs.reshape(-1, *xs.shape[2:]))
+                .view(seq_length, batch_size, *xs.shape[2:])
+                .sum([-3, -2, -1]),
+                sequence_length=seq_length,
+                batch_size=batch_size,
+            )
+
+            # Regularization objective
+            # -ln q_\phi(a|x)
+            regularization_obj = aggregate(
+                -as_distrib.log_prob(as_.view(-1, self.a_dim))
+                .view(seq_length, batch_size, self.a_dim)
+                .sum(-1),
+                sequence_length=seq_length,
+                batch_size=batch_size,
+            )
 
         # Kalman filter and smoother
         (
@@ -176,12 +201,12 @@ class KalmanVariationalAutoencoder(nn.Module):
                 torch.zeros(self.a_dim, dtype=xs.dtype, device=xs.device),
                 torch.ones(self.a_dim, dtype=xs.dtype, device=xs.device),
             )
-            kl_reg = (
-                -torch.distributions.kl.kl_divergence(as_distrib, prior_distrib)
+            kl_reg = -aggregate(
+                torch.distributions.kl.kl_divergence(as_distrib, prior_distrib)
                 .view(seq_length, batch_size, self.a_dim)
-                .sum(0)
-                .mean(0)
-                .sum(0)
+                .sum(-1),
+                sequence_length=seq_length,
+                batch_size=batch_size,
             )
         else:
             kl_reg = self._zero_val
@@ -196,41 +221,67 @@ class KalmanVariationalAutoencoder(nn.Module):
             (mat_Cs[:-1] @ zs_sample.unsqueeze(-1)).view(-1, self.a_dim),
             self.state_space_model.mat_R,
         )
-        kalman_observation_log_likelihood = (
-            kalman_observation_distrib.log_prob(as_.view(-1, self.a_dim))
-            .view(seq_length, batch_size, -1)
-            .sum(0)
-            .mean(0)
-            .sum()
+        kalman_observation_log_likelihood = aggregate(
+            kalman_observation_distrib.log_prob(as_.view(-1, self.a_dim)).view(
+                seq_length, batch_size
+            ),
+            sequence_length=seq_length,
+            batch_size=batch_size,
         )
 
-        # ln p_\gamma(z)
-        kalman_state_transition_log_likelihood = (
-            self.state_space_model.state_transition_log_likelihood(zs_sample, mat_As)
+        # ln p_\gamma(z) = \ln p_\gamma(z_0) + \sum_{t=1}^{T-1} ln p_\gamma(z_t|z_{t-1})
+        zs_prior_means = torch.cat(
+            [
+                self.state_space_model.initial_state_mean.repeat(1, batch_size, 1),
+                (mat_As[1:-1] @ zs_sample[:-1].unsqueeze(-1)).squeeze(-1),
+            ]
+        )
+        zs_prior_covariances = torch.cat(
+            [
+                self.state_space_model.initial_state_covariance.repeat(
+                    1, batch_size, 1, 1
+                ),
+                self.state_space_model.mat_Q.repeat(seq_length - 1, batch_size, 1, 1),
+            ]
+        )
+        zs_prior_distrib = D.MultivariateNormal(
+            zs_prior_means.view(seq_length, batch_size, self.z_dim),
+            zs_prior_covariances.view(seq_length, batch_size, self.z_dim, self.z_dim),
+        )
+        kalman_state_transition_log_likelihood = aggregate(
+            zs_prior_distrib.log_prob(zs_sample),
+            sequence_length=seq_length,
+            batch_size=batch_size,
         )
 
         # ln p_\gamma(z|a)
-        kalman_posterior_log_likelihood = zs_distrib.log_prob(zs_sample).sum(0).mean(0)
-
-        objective = (
-            reconst_weight * reconstruction_obj
-            + regularization_weight * regularization_obj
-            + kl_weight * kl_reg
-            + kalman_weight
-            * (
-                kalman_observation_log_likelihood
-                + kalman_state_transition_log_likelihood
-                - kalman_posterior_log_likelihood
-            )
+        kalman_posterior_log_likelihood = aggregate(
+            zs_distrib.log_prob(zs_sample).view(seq_length, batch_size),
+            sequence_length=seq_length,
+            batch_size=batch_size,
         )
+
+        objective = +kl_weight * kl_reg + kalman_weight * (
+            kalman_observation_log_likelihood
+            + kalman_state_transition_log_likelihood
+            - kalman_posterior_log_likelihood
+        )
+
+        if xs is not None:
+            objective += reconst_weight * reconstruction_obj
+            objective += regularization_weight * regularization_obj
 
         return objective, {
             "reconst_weight": reconst_weight,
             "regularization_weight": regularization_weight,
             "kalman_weight": kalman_weight,
             "kl_weight": kl_weight,
-            "reconstruction": reconstruction_obj.cpu().detach().numpy(),
-            "regularization": regularization_obj.cpu().detach().numpy(),
+            "reconstruction": reconstruction_obj.cpu().detach().numpy()
+            if xs is not None
+            else 0.0,
+            "regularization": regularization_obj.cpu().detach().numpy()
+            if xs is not None
+            else 0.0,
             "kl": kl_reg.cpu().detach().numpy(),
             "kalman_observation_log_likelihood": kalman_observation_log_likelihood.cpu()
             .detach()

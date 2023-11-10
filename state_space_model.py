@@ -1,31 +1,38 @@
+import logging
+from typing import Optional
+
 import torch
 import torch.distributions as D
 import torch.nn as nn
 import torch.nn.functional as F
 
 from dynamics_parameter_network import LSTMModel
+from misc import _validate_shape, aggregate
 from sample_control import SampleControl
+
+logger = logging.getLogger(__name__)
 
 
 class StateSpaceModel(nn.Module):
     def __init__(
         self,
-        a_dim,
-        z_dim,
-        K,
-        hidden_dim=128,
-        num_layers=2,
-        Q_reg=1e-3,
-        R_reg=1e-3,
-        init_reg_weight=0.9,
-        initial_state_mean=None,
-        initial_state_covariance=None,
-        fix_matrices=False,
+        a_dim: int,
+        z_dim: int,
+        K: int,
+        hidden_dim: int = 128,
+        num_layers: int = 2,
+        Q_reg: float = 1e-3,
+        R_reg: float = 1e-3,
+        init_reg_weight: float = 0.9,
+        initial_state_mean: Optional[torch.Tensor] = None,
+        initial_state_covariance: Optional[torch.Tensor] = None,
+        fix_matrices: bool = False,
     ):
         super(StateSpaceModel, self).__init__()
 
         self.a_dim = a_dim
         self.z_dim = z_dim
+        self.a_0 = nn.Parameter(torch.zeros(a_dim))
         self.K = K
 
         self._mat_A_K = nn.Parameter(
@@ -39,9 +46,11 @@ class StateSpaceModel(nn.Module):
         mat_Q = (1.0 - init_reg_weight) * torch.randn(
             z_dim, z_dim
         ) + init_reg_weight * torch.eye(z_dim)
+        mat_Q = mat_Q @ mat_Q.T
         mat_R = (1.0 - init_reg_weight) * torch.randn(
             a_dim, a_dim
         ) + init_reg_weight * torch.eye(a_dim)
+        mat_R = mat_R @ mat_R.T
         self._mat_Q_L = nn.Parameter(torch.linalg.cholesky((mat_Q + mat_Q.T) / 2.0))
         self._mat_R_L = nn.Parameter(torch.linalg.cholesky((mat_R + mat_R.T) / 2.0))
         self._a_eye = torch.eye(a_dim)
@@ -54,23 +63,15 @@ class StateSpaceModel(nn.Module):
         if initial_state_mean is None:
             self.initial_state_mean = torch.zeros(z_dim)
         else:
-            if initial_state_mean.shape != (z_dim,):
-                raise ValueError(
-                    "initial_state_mean must have shape (z_dim,), got {}".format(
-                        initial_state_mean.shape
-                    )
-                )
+            _validate_shape(initial_state_mean, (z_dim,), "initial_state_mean")
             self.initial_state_mean = initial_state_mean
 
         if initial_state_covariance is None:
-            self.initial_state_covariance = torch.eye(z_dim)
+            self.initial_state_covariance = 10 * torch.eye(z_dim)
         else:
-            if initial_state_covariance.shape != (z_dim, z_dim):
-                raise ValueError(
-                    "initial_state_covariance must have shape (z_dim, z_dim), got {}".format(
-                        initial_state_covariance.shape
-                    )
-                )
+            _validate_shape(
+                initial_state_covariance, (z_dim, z_dim), "initial_state_covariance"
+            )
             self.initial_state_covariance = initial_state_covariance
 
         self.weight_model = LSTMModel(
@@ -88,7 +89,7 @@ class StateSpaceModel(nn.Module):
         return self
 
     @property
-    def mat_Q(self):
+    def mat_Q(self) -> torch.Tensor:
         # shape: (z_dim, z_dim)
         matrix = self._mat_Q_L @ self._mat_Q_L.T + self._z_eye * self.Q_reg
         if self.fix_matrices:
@@ -96,7 +97,7 @@ class StateSpaceModel(nn.Module):
         return matrix
 
     @property
-    def mat_R(self):
+    def mat_R(self) -> torch.Tensor:
         # shape: (a_dim, a_dim)
         matrix = self._mat_R_L @ self._mat_R_L.T + self._a_eye * self.R_reg
         if self.fix_matrices:
@@ -104,7 +105,7 @@ class StateSpaceModel(nn.Module):
         return matrix
 
     @property
-    def mat_A_K(self):
+    def mat_A_K(self) -> torch.Tensor:
         # shape: (K, z_dim, z_dim)
         matrix = self._mat_A_K
         if self.fix_matrices:
@@ -112,7 +113,7 @@ class StateSpaceModel(nn.Module):
         return matrix
 
     @property
-    def mat_C_K(self):
+    def mat_C_K(self) -> torch.Tensor:
         # shape: (K, a_dim, z_dim)
         matrix = self._mat_C_K
         if self.fix_matrices:
@@ -120,49 +121,37 @@ class StateSpaceModel(nn.Module):
         return matrix
 
     @mat_Q.setter
-    def mat_Q(self, value):
+    def mat_Q(self, value: torch.Tensor):
         # shape: (z_dim, z_dim)
-        if value.shape != (self.z_dim, self.z_dim):
-            raise ValueError(
-                "mat_Q must have shape (z_dim, z_dim), got {}".format(value.shape)
-            )
+        _validate_shape(value, (self.z_dim, self.z_dim), "mat_Q")
         self._mat_Q_L = nn.Parameter(torch.linalg.cholesky(value))
         self.Q_reg = 0.0
 
     @mat_R.setter
-    def mat_R(self, value):
+    def mat_R(self, value: torch.Tensor):
         # shape: (a_dim, a_dim)
-        if value.shape != (self.a_dim, self.a_dim):
-            raise ValueError(
-                "mat_R must have shape (a_dim, a_dim), got {}".format(value.shape)
-            )
+        _validate_shape(value, (self.a_dim, self.a_dim), "mat_R")
         self._mat_R_L = nn.Parameter(torch.linalg.cholesky(value))
         self.R_reg = 0.0
 
     @mat_A_K.setter
-    def mat_A_K(self, value):
-        if value.shape != (self.K, self.z_dim, self.z_dim):
-            raise ValueError(
-                "mat_A_K must have shape (K, z_dim, z_dim), got {}".format(value.shape)
-            )
+    def mat_A_K(self, value: torch.Tensor):
+        _validate_shape(value, (self.K, self.z_dim, self.z_dim), "mat_A_K")
         self._mat_A_K = nn.Parameter(value)
 
     @mat_C_K.setter
-    def mat_C_K(self, value):
-        if value.shape != (self.K, self.a_dim, self.z_dim):
-            raise ValueError(
-                "mat_C_K must have shape (K, a_dim, z_dim), got {}".format(value.shape)
-            )
+    def mat_C_K(self, value: torch.Tensor):
+        _validate_shape(value, (self.K, self.a_dim, self.z_dim), "mat_C_K")
         self._mat_C_K = nn.Parameter(value)
 
     def kalman_filter(
         self,
-        as_,
+        as_: torch.Tensor,
         sample_control: SampleControl,
-        observation_mask=None,
-        learn_weight_model=True,
-        symmetrize_covariance=True,
-        burn_in=0,
+        observation_mask: Optional[torch.Tensor] = None,
+        learn_weight_model: bool = True,
+        symmetrize_covariance: bool = True,
+        burn_in: int = 0,
     ):
         # as_: a_0, a_1, ..., a_{T-1}
         # shape: (sequence_length, batch_size, a_dim)
@@ -197,25 +186,12 @@ class StateSpaceModel(nn.Module):
         # \Sigma_{1|0}, \Sigma_{2|1}, ..., \Sigma_{T|T-1}
         next_covariances = []
 
-        as_list = []
+        as_for_weight_list = []
 
         mat_As_list = []
         mat_Cs_list = []
 
         for t in range(sequence_length):
-            z_next_distrib = D.MultivariateNormal(mean_t_plus, cov_t_plus)
-            if sample_control.state_transition == "sample":
-                z_next = z_next_distrib.rsample()
-            elif sample_control.state_transition == "mean":
-                z_next = z_next_distrib.mean
-            else:
-                raise ValueError(
-                    "Invalid sample_control.state_transition: {}".format(
-                        sample_control.state_transition
-                    )
-                )
-            # shape of z_next: (batch_size, z_dim)
-
             weight = weight_next
 
             if t == 0:
@@ -224,33 +200,27 @@ class StateSpaceModel(nn.Module):
                 mat_A = mat_A_next
             mat_C = torch.einsum("tbk,kij->bij", weight, self.mat_C_K)
 
-            a_distrib = D.MultivariateNormal(
-                torch.bmm(mat_C, z_next.unsqueeze(-1)).squeeze(-1), self.mat_R
-            )
-            if sample_control.observation == "sample":
-                a_pred = a_distrib.rsample()
-            elif sample_control.observation == "mean":
-                a_pred = a_distrib.mean
-            else:
-                raise ValueError(
-                    "Invalid sample_control.observation: {}".format(
-                        sample_control.observation
-                    )
-                )
+            a_observed = as_[t]
+            z_sample = D.MultivariateNormal(
+                torch.bmm(mat_A, mean_t_plus.unsqueeze(-1)).squeeze(-1), self.mat_Q
+            ).rsample()
+            a_unobserved = D.MultivariateNormal(
+                torch.bmm(mat_C, z_sample.unsqueeze(-1)).squeeze(-1), self.mat_R
+            ).rsample()
 
             if observation_mask is None:
-                a = as_[t]
+                a_for_weight = a_observed
             else:
-                a = as_[t] * observation_mask[t].view(batch_size, 1) + a_pred * (
-                    1.0 - observation_mask[t].view(batch_size, 1)
+                a_for_weight = (
+                    observation_mask[t] * a_observed
+                    + (1.0 - observation_mask[t]) * a_unobserved
                 )
-
-            as_list.append(a)
+            as_for_weight_list.append(a_for_weight)
 
             if learn_weight_model:
-                weight_next = self.weight_model(a.unsqueeze(0))
+                weight_next = self.weight_model(a_for_weight.unsqueeze(0))
             else:
-                weight_next = self.weight_model(a.unsqueeze(0)).detach()
+                weight_next = self.weight_model(a_for_weight.unsqueeze(0)).detach()
 
             mat_A_next = torch.einsum("tbk,kij->bij", weight_next, self.mat_A_K)
 
@@ -266,21 +236,41 @@ class StateSpaceModel(nn.Module):
             )
 
             # \hat{z}_{0|0}, \hat{z}_{1|1}, ..., \hat{z}_{T-1|T-1}
-            mean_t = mean_t_plus + torch.bmm(
-                K_t, (a.unsqueeze(-1) - torch.bmm(mat_C, mean_t_plus.unsqueeze(-1)))
+            mean_t_observed = mean_t_plus + torch.bmm(
+                K_t,
+                (as_[t].unsqueeze(-1) - torch.bmm(mat_C, mean_t_plus.unsqueeze(-1))),
             ).squeeze(
                 -1
             )  # Updated state estimate
+
+            mean_t_unobserved = mean_t_plus
+
+            # \Sigma_{0|0}, \Sigma_{1|1}, ..., \Sigma_{T-1|T-1}
+            cov_t_observed = (
+                cov_t_plus - K_t @ mat_C @ cov_t_plus
+            )  # Updated state covariance
+            cov_t_unobserved = cov_t_plus
+
+            if observation_mask is None:
+                mean_t = mean_t_observed
+                cov_t = cov_t_observed
+            else:
+                mean_t = (
+                    observation_mask[t].unsqueeze(-1) * mean_t_observed
+                    + (1.0 - observation_mask[t]).unsqueeze(-1) * mean_t_unobserved
+                )
+                cov_t = (
+                    observation_mask[t].unsqueeze(-1).unsqueeze(-1) * cov_t_observed
+                    + (1.0 - observation_mask[t]).unsqueeze(-1).unsqueeze(-1)
+                    * cov_t_unobserved
+                )
+            if symmetrize_covariance:
+                cov_t = (cov_t + cov_t.transpose(1, 2)) / 2.0
+
             # z_{1|0}, z_{2|1}, ..., z_{T|T-1}
             mean_t_plus = torch.bmm(mat_A_next, mean_t.unsqueeze(-1)).squeeze(
                 -1
             )  # Predicted state estimate
-
-            # \Sigma_{0|0}, \Sigma_{1|1}, ..., \Sigma_{T-1|T-1}
-            cov_t = cov_t_plus - K_t @ mat_C @ cov_t_plus  # Updated state covariance
-
-            if symmetrize_covariance:
-                cov_t = (cov_t + cov_t.transpose(1, 2)) / 2.0
 
             # \Sigma_{1|0}, \Sigma_{2|1}, ..., \Sigma_{T|T-1}
             cov_t_plus = (
@@ -309,22 +299,30 @@ class StateSpaceModel(nn.Module):
         mat_As = torch.stack(mat_As_list, dim=0)
         mat_Cs = torch.stack(mat_Cs_list, dim=0)
 
-        as_ = torch.stack(as_list, dim=0)
+        as_for_weight = torch.stack(as_for_weight_list, dim=0)
 
-        return means, covariances, next_means, next_covariances, mat_As, mat_Cs, as_
+        return (
+            torch.stack(means),
+            torch.stack(covariances),
+            torch.stack(next_means),
+            torch.stack(next_covariances),
+            mat_As,
+            mat_Cs,
+            as_for_weight,
+        )
 
     def kalman_smooth(
         self,
-        as_,
-        filter_means,
-        filter_covariances,
-        filter_next_means,
-        filter_next_covariances,
-        mat_As,
-        mat_Cs,
+        as_: torch.Tensor,
+        filter_means: torch.Tensor,
+        filter_covariances: torch.Tensor,
+        filter_next_means: torch.Tensor,
+        filter_next_covariances: torch.Tensor,
+        mat_As: torch.Tensor,
+        mat_Cs: torch.Tensor,
         sample_control: SampleControl,
-        symmetrize_covariance=True,
-        burn_in=0,
+        symmetrize_covariance: bool = True,
+        burn_in: int = 0,
     ):
         sequence_length, batch_size, _ = as_.size()
 
@@ -424,37 +422,6 @@ class StateSpaceModel(nn.Module):
             torch.stack(as_list),
         )
 
-    def state_transition_log_likelihood(self, zs, mat_As):
-        sequence_length, batch_size, _ = zs.size()
-
-        # Initial state estimate: \hat{z}_{0|-1}
-        mean_t_plus = (
-            self.initial_state_mean.unsqueeze(0).repeat(batch_size, 1).unsqueeze(2)
-        )
-
-        # Initial state covariance: \Sigma_{0|-1}
-        cov_t_plus = self.initial_state_covariance.unsqueeze(0).repeat(batch_size, 1, 1)
-
-        state_transition_log_likelihood = 0.0
-
-        for t in range(sequence_length):
-            distrib = D.MultivariateNormal(mean_t_plus.view(-1, self.z_dim), cov_t_plus)
-            state_transition_log_likelihood += distrib.log_prob(
-                zs[t].view(-1, self.z_dim)
-            ).sum()
-
-            mean_t_plus = mat_As[t + 1] @ zs[t].unsqueeze(-1)
-            cov_t_plus = self.mat_Q
-
-            # else:
-            #     mean_t_plus = mat_As[t] @ mean_t_plus
-            #     cov_t_plus = (
-            #         mat_As[t] @ cov_t_plus @ mat_As[t].transpose(1, 2) + self.mat_Q
-            #     )
-            #     cov_t_plus = (cov_t_plus + cov_t_plus.transpose(1, 2)) / 2.0
-
-        return state_transition_log_likelihood
-
     def predict_future(
         self,
         as_,
@@ -481,8 +448,11 @@ class StateSpaceModel(nn.Module):
         covariances = [
             covariance for covariance in covariances
         ]  # \Sigma_{0|T-1}, \Sigma_{1|T-1}, ..., \Sigma_{T-1|T-1}
+
         # next_means: z_{1|0}, z_{2|1}, ..., z_{T|T-1}
+        next_means = [next_mean for next_mean in next_means]
         # next_covariances: \Sigma_{1|0}, \Sigma_{2|1}, ..., \Sigma_{T|T-1}
+        next_covariances = [next_covariance for next_covariance in next_covariances]
 
         as_tensor = torch.stack(as_list, dim=0)
 
@@ -497,7 +467,7 @@ class StateSpaceModel(nn.Module):
             )
 
             if sample_control.state_transition == "sample":
-                next_z = next_z_distrib.rsample()
+                next_z = next_z_distrib.sample()
             elif sample_control.state_transition == "mean":
                 next_z = next_z_distrib.mean
             else:
@@ -515,13 +485,19 @@ class StateSpaceModel(nn.Module):
             mat_C = torch.einsum("bk,kij->bij", weights[-1], self.mat_C_K)
             mat_As_list.append(mat_A)
             mat_Cs_list.append(mat_C)
-            next_mean = mat_A @ next_means[-1]
+            next_mean = (mat_A @ next_means[-1].unsqueeze(-1)).squeeze(-1)
             if sample_control.state_transition == "sample":
-                next_covariance = self.mat_Q
+                next_covariance = self.mat_Q.unsqueeze(0).repeat(batch_size, 1, 1)
             elif sample_control.state_transition == "mean":
                 # TODO: This should be considered later
                 next_covariance = (
                     mat_A @ next_covariances[-1] @ mat_A.transpose(1, 2) + self.mat_Q
+                )
+            else:
+                raise ValueError(
+                    "Invalid sample_control.state_transition: {}".format(
+                        sample_control.state_transition
+                    )
                 )
             next_covariance = (next_covariance + next_covariance.transpose(1, 2)) / 2.0
             next_means.append(next_mean)

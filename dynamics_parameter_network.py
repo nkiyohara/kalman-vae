@@ -26,9 +26,11 @@ class LSTMModel(nn.Module, DynamicsParameterNetwork):
         )
         self.linear = nn.Linear(hidden_dim, output_dim)
         self.hidden = None
+        self.count = 0
 
     def clear_hidden_state(self):
         self.hidden = None
+        self.count = 0
 
     def reset_hidden_state(self, batch_size, device, dtype):
         self.hidden = (
@@ -39,8 +41,11 @@ class LSTMModel(nn.Module, DynamicsParameterNetwork):
                 self.num_layers, batch_size, self.hidden_dim, dtype=dtype, device=device
             ),
         )
+        self.count = 0
 
     def forward(self, x):
+        self.count += 1
+
         if self.hidden is None:
             batch_size = x.size(1)
             self.reset_hidden_state(batch_size, device=x.device, dtype=x.dtype)
