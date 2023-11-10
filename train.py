@@ -126,7 +126,7 @@ def run_epoch(
 def save_checkpoint(
     kvae: KalmanVariationalAutoencoder,
     optimizer: optim.Optimizer,
-    scheduler: lr_scheduler._LRScheduler,
+    scheduler: lr_scheduler.LRScheduler,
     epoch: int,
     train_loss: float,
     test_loss: float,
@@ -162,7 +162,7 @@ def train(config: Config) -> None:
     Main training function.
     """
     # Initialize wandb
-    wandb.init(project=config.project_name, config=config._asdict())
+    wandb.init(project=config.project_name, name=config.name, config=config._asdict())
 
     # Setup device and dtype
     device = torch.device(config.device)
@@ -345,6 +345,7 @@ def parse_args() -> Config:
         dtype=args.dtype,
         checkpoint_dir=args.checkpoint_dir,
         project_name="Kalman-VAE",
+        name=args.name,
     )
 
 
