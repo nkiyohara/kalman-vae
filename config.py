@@ -24,10 +24,13 @@ class Config(NamedTuple):
     decoder_type: Literal["bernoulli", "gaussian"]  # Type of decoder
     reconst_weight: float  # Weight for reconstruction loss
     regularization_weight: float  # Weight for regularization loss
+    kalman_weight: float  # Weight for Kalman loss
+    kl_weight: float  # Weight for KL loss (when using VAE)
     symmetrize_covariance: bool  # Whether to symmetrize the covariance matrix
 
     # Training Settings - Parameters related to training
     epochs: int  # Number of training epochs
+    warmup_epochs: int  # Number of epochs to train without updating dynamics parameter network
     learning_rate: float  # Learning rate
     learning_rate_decay: float  # Learning rate decay
     scheduler_step: int  # Number of epochs between scheduler steps

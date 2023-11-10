@@ -17,8 +17,11 @@ python train.py \
     --decoder_type "bernoulli" \
     --reconst_weight 1.0 \
     --regularization_weight 0.3 \
-    --symmetrize_covariance False \
+    --kalman_weight 1.0 \
+    --kl_weight 0.0 \
+    --symmetrize_covariance True \
     --epochs 80 \
+    --warmup_epochs 10 \
     --learning_rate 0.007 \
     --learning_rate_decay 0.8 \
     --burn_in 3 \

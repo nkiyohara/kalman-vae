@@ -303,7 +303,7 @@ def parse_args() -> Config:
         "--warmup_epochs",
         type=int,
         default=10,
-        help="Number of epochs to train without updating the dynamics parameter network",
+        help="Number of epochs to train without updating dynamics parameter network",
     )
     train_group.add_argument(
         "--learning_rate", type=float, default=7e-3, help="Learning rate"
@@ -372,6 +372,7 @@ def parse_args() -> Config:
         kl_weight=args.kl_weight,
         symmetrize_covariance=args.symmetrize_covariance,
         epochs=args.epochs,
+        warmup_epochs=args.warmup_epochs,
         learning_rate=args.learning_rate,
         learning_rate_decay=args.learning_rate_decay,
         burn_in=args.burn_in,
