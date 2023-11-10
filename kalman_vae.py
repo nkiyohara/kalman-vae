@@ -98,6 +98,8 @@ class KalmanVariationalAutoencoder(nn.Module):
         learn_weight_model=True,
         symmetrize_covariance=True,
         burn_in=0,
+        sequence_operation: Literal["mean", "sum"] = "mean",
+        batch_operation: Literal["mean", "sum"] = "mean",
     ):
         if as_ is None and xs is None:
             raise ValueError("Either as_ or xs must be provided")
@@ -145,16 +147,20 @@ class KalmanVariationalAutoencoder(nn.Module):
                 .sum([-3, -2, -1]),
                 sequence_length=seq_length,
                 batch_size=batch_size,
+                sequence_operation=sequence_operation,
+                batch_operation=batch_operation,
             )
 
             # Regularization objective
             # -ln q_\phi(a|x)
             regularization_obj = aggregate(
-                -as_distrib.log_prob(as_.view(-1, self.a_dim))
+                as_distrib.log_prob(as_.view(-1, self.a_dim))
                 .view(seq_length, batch_size, self.a_dim)
                 .sum(-1),
                 sequence_length=seq_length,
                 batch_size=batch_size,
+                sequence_operation=sequence_operation,
+                batch_operation=batch_operation,
             )
 
         # Kalman filter and smoother
@@ -207,6 +213,8 @@ class KalmanVariationalAutoencoder(nn.Module):
                 .sum(-1),
                 sequence_length=seq_length,
                 batch_size=batch_size,
+                sequence_operation=sequence_operation,
+                batch_operation=batch_operation,
             )
         else:
             kl_reg = self._zero_val
@@ -227,6 +235,8 @@ class KalmanVariationalAutoencoder(nn.Module):
             ),
             sequence_length=seq_length,
             batch_size=batch_size,
+            sequence_operation=sequence_operation,
+            batch_operation=batch_operation,
         )
 
         # ln p_\gamma(z) = \ln p_\gamma(z_0) + \sum_{t=1}^{T-1} ln p_\gamma(z_t|z_{t-1})
@@ -252,6 +262,8 @@ class KalmanVariationalAutoencoder(nn.Module):
             zs_prior_distrib.log_prob(zs_sample),
             sequence_length=seq_length,
             batch_size=batch_size,
+            sequence_operation=sequence_operation,
+            batch_operation=batch_operation,
         )
 
         # ln p_\gamma(z|a)
@@ -259,37 +271,52 @@ class KalmanVariationalAutoencoder(nn.Module):
             zs_distrib.log_prob(zs_sample).view(seq_length, batch_size),
             sequence_length=seq_length,
             batch_size=batch_size,
+            sequence_operation=sequence_operation,
+            batch_operation=batch_operation,
         )
 
-        objective = +kl_weight * kl_reg + kalman_weight * (
-            kalman_observation_log_likelihood
-            + kalman_state_transition_log_likelihood
-            - kalman_posterior_log_likelihood
+        weighted_kl_reg = kl_weight * kl_reg
+        weighted_kalman_observation_log_likelihood = (
+            kalman_weight * kalman_observation_log_likelihood
+        )
+        weighted_kalman_state_transition_log_likelihood = (
+            kalman_weight * kalman_state_transition_log_likelihood
+        )
+        weighted_kalman_posterior_log_likelihood = (
+            -kalman_weight * kalman_posterior_log_likelihood
+        )
+
+        objective = (
+            +weighted_kl_reg
+            + weighted_kalman_observation_log_likelihood
+            + weighted_kalman_state_transition_log_likelihood
+            + weighted_kalman_posterior_log_likelihood
         )
 
         if xs is not None:
-            objective += reconst_weight * reconstruction_obj
-            objective += regularization_weight * regularization_obj
+            weighted_reconstruction_obj = reconst_weight * reconstruction_obj
+            weighted_regularization_obj = -regularization_weight * regularization_obj
+            objective += weighted_reconstruction_obj + weighted_regularization_obj
 
         return objective, {
             "reconst_weight": reconst_weight,
             "regularization_weight": regularization_weight,
             "kalman_weight": kalman_weight,
             "kl_weight": kl_weight,
-            "reconstruction": reconstruction_obj.cpu().detach().numpy()
+            "reconstruction": weighted_reconstruction_obj.cpu().detach().numpy()
             if xs is not None
             else 0.0,
-            "regularization": regularization_obj.cpu().detach().numpy()
+            "regularization": weighted_regularization_obj.cpu().detach().numpy()
             if xs is not None
             else 0.0,
-            "kl": kl_reg.cpu().detach().numpy(),
-            "kalman_observation_log_likelihood": kalman_observation_log_likelihood.cpu()
+            "kl": weighted_kl_reg.cpu().detach().numpy(),
+            "kalman_observation_log_likelihood": weighted_kalman_observation_log_likelihood.cpu()
             .detach()
             .numpy(),
-            "kalman_state_transition_log_likelihood": kalman_state_transition_log_likelihood.cpu()
+            "kalman_state_transition_log_likelihood": weighted_kalman_state_transition_log_likelihood.cpu()
             .detach()
             .numpy(),
-            "kalman_posterior_log_likelihood": kalman_posterior_log_likelihood.cpu()
+            "kalman_posterior_log_likelihood": weighted_kalman_posterior_log_likelihood.cpu()
             .detach()
             .numpy(),
             "observation_mask": observation_mask,

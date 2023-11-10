@@ -1,8 +1,6 @@
-from typing import Optional, Tuple
+from typing import Literal, Tuple
 
 import torch
-
-from config import Config
 
 
 def compute_conv2d_output_size(input_size, kernel_size, stride, padding):
@@ -24,21 +22,20 @@ def aggregate(
     value: torch.Tensor,
     sequence_length: int,
     batch_size: int,
-    config: Optional[Config] = None,
+    sequence_operation: Literal["mean", "sum"],
+    batch_operation: Literal["mean", "sum"],
 ):
     _validate_shape(value, (sequence_length, batch_size), "value")
-    if config is None:
-        config = Config()
-    if config.sequence_operation == "mean":
+    if sequence_operation == "mean":
         value = value.mean(dim=0)
-    elif config.sequence_operation == "sum":
+    elif sequence_operation == "sum":
         value = value.sum(dim=0)
     else:
-        raise ValueError(f"Invalid sequence operation {config.sequence_operation}")
-    if config.batch_operation == "mean":
+        raise ValueError(f"Invalid sequence operation {sequence_operation}")
+    if batch_operation == "mean":
         value = value.mean(dim=0)
-    elif config.batch_operation == "sum":
+    elif batch_operation == "sum":
         value = value.sum(dim=0)
     else:
-        raise ValueError(f"Invalid batch operation {config.batch_operation}")
+        raise ValueError(f"Invalid batch operation {batch_operation}")
     return value

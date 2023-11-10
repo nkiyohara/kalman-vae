@@ -67,7 +67,7 @@ class StateSpaceModel(nn.Module):
             self.initial_state_mean = initial_state_mean
 
         if initial_state_covariance is None:
-            self.initial_state_covariance = 10 * torch.eye(z_dim)
+            self.initial_state_covariance = torch.eye(z_dim)
         else:
             _validate_shape(
                 initial_state_covariance, (z_dim, z_dim), "initial_state_covariance"
@@ -212,8 +212,8 @@ class StateSpaceModel(nn.Module):
                 a_for_weight = a_observed
             else:
                 a_for_weight = (
-                    observation_mask[t] * a_observed
-                    + (1.0 - observation_mask[t]) * a_unobserved
+                    observation_mask[t].unsqueeze(-1) * a_observed
+                    + (1.0 - observation_mask[t].unsqueeze(-1)) * a_unobserved
                 )
             as_for_weight_list.append(a_for_weight)
 
