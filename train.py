@@ -79,6 +79,7 @@ def run_epoch(
     device: torch.device,
     dtype: torch.dtype,
     mode: Literal["train", "test"],
+    epoch: int,
 ) -> tuple[float, dict]:
     """
     Run training or testing for one epoch.
@@ -106,8 +107,13 @@ def run_epoch(
                 xs=data,
                 reconst_weight=config.reconst_weight,
                 regularization_weight=config.regularization_weight,
-                symmetrize_covariance=True,
+                kalman_weight=config.kalman_weight,
+                kl_weight=config.kl_weight,
+                batch_operation=config.batch_operation,
+                sequence_operation=config.sequence_operation,
+                symmetrize_covariance=config.symmetrize_covariance,
                 burn_in=config.burn_in,
+                learn_weight_model=(epoch >= config.warmup_epochs),
                 sample_control=SampleControl(),
             )
             loss = -elbo
@@ -181,10 +187,24 @@ def train(config: Config) -> None:
     # Training Loop
     for epoch in tqdm(range(config.epochs)):
         train_loss, train_metrics = run_epoch(
-            dataloader_train, kvae, optimizer, config, device, dtype, mode="train"
+            dataloader=dataloader_train,
+            kvae=kvae,
+            optimizer=optimizer,
+            config=config,
+            device=device,
+            dtype=dtype,
+            mode="train",
+            epoch=epoch,
         )
         test_loss, test_metrics = run_epoch(
-            dataloader_test, kvae, optimizer, config, device, dtype, mode="test"
+            dataloader=dataloader_test,
+            kvae=kvae,
+            optimizer=optimizer,
+            config=config,
+            device=device,
+            dtype=dtype,
+            mode="test",
+            epoch=epoch,
         )
 
         # Log losses and metrics
@@ -203,13 +223,13 @@ def train(config: Config) -> None:
             scheduler.step()
 
         save_checkpoint(
-            kvae,
-            optimizer,
-            scheduler,
-            epoch,
-            train_loss,
-            test_loss,
-            config.checkpoint_dir,
+            kvae=kvae,
+            optimizer=optimizer,
+            scheduler=scheduler,
+            epoch=epoch,
+            train_loss=train_loss,
+            test_loss=test_loss,
+            checkpoint_dir=config.checkpoint_dir,
         )
 
 
@@ -265,10 +285,25 @@ def parse_args() -> Config:
         default=False,
         help="Symmetrize the covariance matrix",
     )
+    model_group.add_argument(
+        "--kalman_weight", type=float, default=1.0, help="Weight for Kalman loss"
+    )
+    model_group.add_argument(
+        "--kl_weight",
+        type=float,
+        default=0.0,
+        help="Weight for KL loss (when training VAE individually)",
+    )
 
     train_group = parser.add_argument_group("Training settings")
     train_group.add_argument(
         "--epochs", type=int, default=80, help="Number of training epochs"
+    )
+    train_group.add_argument(
+        "--warmup_epochs",
+        type=int,
+        default=10,
+        help="Number of epochs to train without updating the dynamics parameter network",
     )
     train_group.add_argument(
         "--learning_rate", type=float, default=7e-3, help="Learning rate"
@@ -333,6 +368,8 @@ def parse_args() -> Config:
         decoder_type=args.decoder_type,
         reconst_weight=args.reconst_weight,
         regularization_weight=args.regularization_weight,
+        kalman_weight=args.kalman_weight,
+        kl_weight=args.kl_weight,
         symmetrize_covariance=args.symmetrize_covariance,
         epochs=args.epochs,
         learning_rate=args.learning_rate,
