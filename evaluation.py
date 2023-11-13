@@ -1,4 +1,5 @@
 import os
+from typing import Optional
 
 import cv2
 import matplotlib.pyplot as plt
@@ -59,16 +60,17 @@ def evaluate(
         dtype=dtype,
         device=device,
     )
-    video_logs = create_continuous_masking_video_log(
+    log_continuous_masking_video(
         dataloader=dataloader,
         kvae=kvae,
         sample_control=sample_control,
         dtype=dtype,
         device=device,
         video_directory=os.path.join(checkpoint_dir, "videos", f"epoch_{epoch}"),
+        metadata={"epoch": epoch},
     )
 
-    return random_masking, continuous_masking, video_logs
+    return random_masking, continuous_masking
 
 
 def evaluate_random_masking(
@@ -188,13 +190,14 @@ def evaluate_continuous_masking(
     )
 
 
-def create_continuous_masking_video_log(
+def log_continuous_masking_video(
     dataloader: torch.utils.data.DataLoader,
     kvae: KalmanVariationalAutoencoder,
     sample_control: SampleControl,
     video_directory: str,
     dtype: torch.dtype,
     device: torch.device,
+    metadata: Optional[dict] = None,
     num_videos: int = 3,
 ):
     batch = next(iter(dataloader))
@@ -202,7 +205,6 @@ def create_continuous_masking_video_log(
     seq_length, batch_size, image_channels, *image_size = batch.shape
 
     mask_lengths = [10, 20, 30, 40]
-    video_logs = []
     for mask_length in mask_lengths:
         mask = create_continuous_mask(
             seq_length=seq_length,
@@ -235,14 +237,14 @@ def create_continuous_masking_video_log(
             )
             video_count += 1
             log = {
+                "video": video,
                 "batch_id": 0,
                 "data_idx": data_idx,
                 "mask_length": mask_length,
-                "video": video,
             }
-            video_logs.append(log)
-
-    return video_logs
+            if metadata is not None:
+                log.update(metadata)
+            wandb.log(log)
 
 
 def calculate_fraction_of_incorrect_pixels(image, reconstructed_image):
