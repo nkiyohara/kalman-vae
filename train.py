@@ -383,6 +383,12 @@ def parse_args() -> Config:
     env_group.add_argument(
         "--name", type=str, default=current_time, help="Name of the experiment"
     )
+    env_group.add_argument(
+        "--evaluation_interval",
+        type=int,
+        default=10,
+        help="Number of epochs between evaluations",
+    )
 
     args = parser.parse_args()
 
@@ -411,6 +417,7 @@ def parse_args() -> Config:
         checkpoint_dir=args.checkpoint_dir,
         project_name="Kalman-VAE",
         name=args.name,
+        evaluation_interval=args.evaluation_interval,
     )
 
 
