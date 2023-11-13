@@ -258,6 +258,13 @@ def calculate_fraction_of_incorrect_pixels(
     observation_mask: torch.Tensor,
 ):
     incorrect = image != (reconstructed_image > 0.5)
+    observation_mask = (
+        observation_mask.unsqueeze(-1)
+        .unsqueeze(-1)
+        .unsqueeze(-1)
+        .repeat(1, 1, 1, 16, 16)
+        .to(dtype=image.dtype, device=image.device)
+    )
     incorrect = incorrect * ~observation_mask
     return incorrect.sum() / (~observation_mask).sum()
 
