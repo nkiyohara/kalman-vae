@@ -289,7 +289,7 @@ def write_trajectory_video(
     fourcc = cv2.VideoWriter_fourcc(*"mp4v")
     frame_size = (1200, 400)
     os.makedirs(os.path.dirname(filename), exist_ok=True)
-    video = cv2.VideoWriter(filename, fourcc, fps, tuple(reversed(frame_size)))
+    video = cv2.VideoWriter(filename, fourcc, fps, frame_size)
 
     for step, (image) in enumerate((data)):
         fig, axes = plt.subplots(
@@ -394,8 +394,7 @@ def write_trajectory_video(
         canvas = FigureCanvas(fig)
         canvas.draw()
         matplotlib_image = np.array(canvas.renderer.buffer_rgba())
-        opencv_image = cv2.cvtColor(matplotlib_image, cv2.COLOR_RGBA2BGRA)
-
+        opencv_image = cv2.cvtColor(matplotlib_image, cv2.COLOR_RGBA2BGR)
         video.write(opencv_image)
 
         plt.close(fig)

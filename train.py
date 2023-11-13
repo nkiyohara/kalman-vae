@@ -226,16 +226,14 @@ def train(config: Config) -> None:
                 dtype=dtype,
             )
 
-            columns = list(video_logs[0].keys())
-            data = [list(log.values()) for log in video_logs]
-
-            log_eval = {
-                "random_masking": wandb.Table(dataframe=random_masking),
-                "continuous_masking": wandb.Table(dataframe=continuous_masking),
-                "video_log": wandb.Table(data=data, columns=columns),
-            }
-        else:
-            log_eval = {}
+            wandb.log(
+                {
+                    "random_masking": wandb.Table(dataframe=random_masking),
+                    "continuous_masking": wandb.Table(dataframe=continuous_masking),
+                    "video_log": video_logs,
+                    "epoch": epoch,
+                }
+            )
 
         # Log losses and metrics
         wandb.log(
