@@ -215,7 +215,7 @@ def train(config: Config) -> None:
             sample_control=sample_control_test,
         )
 
-        if epoch > 0 and epoch % config.evaluation_interval == 0:
+        if epoch % config.evaluation_interval == 0:
             random_masking, continuous_masking, video_logs = evaluate(
                 dataloader=dataloader_test,
                 kvae=kvae,

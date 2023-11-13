@@ -28,7 +28,8 @@ python train.py \
     --batch_operation "mean" \
     --sequence_operation "mean" \
     --scheduler_step 20 \
-    --device "cuda:0" \
+    --device "cuda:1" \
     --dtype "float64" \
     --checkpoint_dir "$checkpoint_directory" \
-    --name "$experiment_name"
+    --name "$experiment_name" \
+    --evaluation_interval 1\

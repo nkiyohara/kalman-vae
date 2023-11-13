@@ -92,6 +92,10 @@ def evaluate_random_masking(
         )
         filtering_incorrect_pixels.append(
             calculate_fraction_of_incorrect_pixels(batch, filtered_images)
+            .cpu()
+            .detach()
+            .numpy()
+            .tolist()
         )
 
         smoothed_images = kvae.decoder(info["as_resampled"].view(-1, 2)).mean.view(
@@ -99,6 +103,10 @@ def evaluate_random_masking(
         )
         smoothing_incorrect_pixels.append(
             calculate_fraction_of_incorrect_pixels(batch, smoothed_images)
+            .cpu()
+            .detach()
+            .numpy()
+            .tolist()
         )
     return pd.DataFrame(
         {
@@ -145,12 +153,20 @@ def evaluate_continuous_masking(
         )
         filtering_incorrect_pixels.append(
             calculate_fraction_of_incorrect_pixels(batch, filtered_images)
+            .cpu()
+            .detach()
+            .numpy()
+            .tolist()
         )
         smoothed_images = kvae.decoder(info["as_resampled"].view(-1, 2)).mean.view(
             seq_length, batch_size, image_channels, *image_size
         )
         smoothing_incorrect_pixels.append(
             calculate_fraction_of_incorrect_pixels(batch, smoothed_images)
+            .cpu()
+            .detach()
+            .numpy()
+            .tolist()
         )
         for data_idx in range(batch_size):
             with TemporaryDirectory() as dname:
