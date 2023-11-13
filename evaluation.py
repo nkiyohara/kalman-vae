@@ -124,7 +124,7 @@ def evaluate_continuous_masking(
     sample_control: SampleControl,
     dtype: torch.dtype,
     device: torch.device,
-    num_videos: int = 5,
+    num_videos: int = 3,
 ) -> tuple[pd.DataFrame, list[dict[str, Any]]]:
     batch = next(iter(dataloader))
     batch = (batch > 0.5).to(dtype=dtype, device=device)
@@ -169,7 +169,17 @@ def evaluate_continuous_masking(
             .numpy()
             .tolist()
         )
+
+    mask_lengths = [10, 20, 30, 40]
+    for mask_length in mask_lengths:
         video_count = 0
+        mask = create_continuous_mask(
+            seq_length=seq_length,
+            mask_length=mask_length,
+            batch_size=batch_size,
+            device=batch.device,
+            dtype=batch.dtype,
+        )
         for data_idx in range(batch_size):
             if video_count >= num_videos:
                 break
@@ -178,7 +188,6 @@ def evaluate_continuous_masking(
                 write_trajectory_video(
                     data=batch[:, data_idx : data_idx + 1],
                     kvae=kvae,
-                    info=info,
                     observation_mask=mask[:, data_idx : data_idx + 1],
                     filename=video_path,
                     channel=0,
@@ -220,7 +229,6 @@ def calculate_fraction_of_incorrect_pixels(image, reconstructed_image):
 def write_trajectory_video(
     data: torch.Tensor,
     kvae: KalmanVariationalAutoencoder,
-    info: dict,
     observation_mask: torch.Tensor,
     sample_control: SampleControl,
     filename: str,

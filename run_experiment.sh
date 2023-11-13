@@ -32,4 +32,4 @@ python train.py \
     --dtype "float64" \
     --checkpoint_dir "$checkpoint_directory" \
     --name "$experiment_name" \
-    --evaluation_interval 1\
+    --evaluation_interval 10 \
