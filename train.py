@@ -220,6 +220,8 @@ def train(config: Config) -> None:
                 dataloader=dataloader_test,
                 kvae=kvae,
                 sample_control=sample_control_test,
+                device=device,
+                dtype=dtype,
             )
 
             columns = list(video_logs[0].keys())

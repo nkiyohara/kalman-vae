@@ -40,17 +40,23 @@ def create_random_mask(seq_length, batch_size, mask_rate, device, dtype):
 def evaluate(
     dataloader: torch.utils.data.DataLoader,
     kvae: KalmanVariationalAutoencoder,
-    sample_control: Optional[SampleControl] = None,
+    sample_control: SampleControl,
+    dtype: torch.dtype,
+    device: torch.device,
 ):
     random_masking = evaluate_random_masking(
         dataloader=dataloader,
         kvae=kvae,
         sample_control=sample_control,
+        dtype=dtype,
+        device=device,
     )
     continuous_masking, video_logs = evaluate_continuous_masking(
         dataloader=dataloader,
         kvae=kvae,
         sample_control=sample_control,
+        dtype=dtype,
+        device=device,
     )
     return random_masking, continuous_masking, video_logs
 
@@ -58,16 +64,16 @@ def evaluate(
 def evaluate_random_masking(
     dataloader: torch.utils.data.DataLoader,
     kvae: KalmanVariationalAutoencoder,
-    sample_control: Optional[SampleControl] = None,
+    sample_control: SampleControl,
+    dtype: torch.dtype,
+    device: torch.device,
 ):
-    if sample_control is None:
-        sample_control = SampleControl()
-
     dropout_probabilities = [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1]
     filtering_incorrect_pixels = []
     smoothing_incorrect_pixels = []
     for dropout_probability in dropout_probabilities:
         batch = next(iter(dataloader))
+        batch = (batch > 0.5).to(dtype=dtype, device=device)
         seq_length, batch_size, image_channels, *image_size = batch.shape
         mask = create_random_mask(
             seq_length=seq_length,
@@ -107,12 +113,12 @@ def evaluate_random_masking(
 def evaluate_continuous_masking(
     dataloader: torch.utils.data.DataLoader,
     kvae: KalmanVariationalAutoencoder,
-    sample_control: Optional[SampleControl] = None,
+    sample_control: SampleControl,
+    dtype: torch.dtype,
+    device: torch.device,
 ) -> tuple[pd.DataFrame, list[dict[str, Any]]]:
-    if sample_control is None:
-        sample_control = SampleControl()
-
     batch = next(iter(dataloader))
+    batch = (batch > 0.5).to(dtype=dtype, device=device)
     seq_length, batch_size, image_channels, *image_size = batch.shape
 
     mask_lengths = np.arange(2, seq_length - 4, 2).tolist()
@@ -195,14 +201,11 @@ def write_trajectory_video(
     kvae: KalmanVariationalAutoencoder,
     info: dict,
     observation_mask: torch.Tensor,
+    sample_control: SampleControl,
     filename: str,
     channel: int = 0,
     fps: int = 10,
-    sample_control: Optional[SampleControl] = None,
 ):
-    if sample_control is None:
-        sample_control = SampleControl()
-
     kvae.eval()
     _, info = kvae.elbo(
         xs=data,
