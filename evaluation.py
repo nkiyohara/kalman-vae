@@ -265,8 +265,8 @@ def calculate_fraction_of_incorrect_pixels(
         .repeat(1, 1, 1, 16, 16)
         .to(dtype=image.dtype, device=image.device)
     )
-    incorrect = incorrect * ~observation_mask
-    return incorrect.sum() / (~observation_mask).sum()
+    incorrect = incorrect * (1.0 - observation_mask)
+    return incorrect.sum() / (1.0 - observation_mask).sum()
 
 
 def write_trajectory_video(
