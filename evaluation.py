@@ -28,7 +28,7 @@ def create_continuous_mask(seq_length, mask_length, batch_size, device, dtype):
 
 
 def create_random_mask(seq_length, batch_size, mask_rate, device, dtype):
-    mask = (torch.rand((seq_length, batch_size), device=device) >= mask_rate).type(
+    mask = (torch.rand((seq_length, batch_size), device=device) >= mask_rate).to(
         device=device, dtype=dtype
     )
     mask[0] = 1
