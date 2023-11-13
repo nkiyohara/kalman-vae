@@ -124,6 +124,7 @@ def evaluate_continuous_masking(
     sample_control: SampleControl,
     dtype: torch.dtype,
     device: torch.device,
+    num_videos: int = 5,
 ) -> tuple[pd.DataFrame, list[dict[str, Any]]]:
     batch = next(iter(dataloader))
     batch = (batch > 0.5).to(dtype=dtype, device=device)
@@ -134,6 +135,8 @@ def evaluate_continuous_masking(
     filtering_incorrect_pixels = []
     smoothing_incorrect_pixels = []
     video_logs = []
+
+    video_count = 0
 
     for mask_length in mask_lengths:
         mask = create_continuous_mask(
@@ -169,10 +172,12 @@ def evaluate_continuous_masking(
             .tolist()
         )
         for data_idx in range(batch_size):
+            if video_count >= num_videos:
+                break
             with TemporaryDirectory() as dname:
                 video_path = os.path.join(dname, f"mask_length_{mask_length}.mp4")
                 write_trajectory_video(
-                    data=batch[data_idx : data_idx + 1],
+                    data=batch[:, data_idx : data_idx + 1],
                     kvae=kvae,
                     info=info,
                     observation_mask=mask,
@@ -187,6 +192,7 @@ def evaluate_continuous_masking(
                     fps=10,
                     format="mp4",
                 )
+            video_count += 1
             log = {
                 "batch_id": 0,
                 "data_idx": data_idx,
