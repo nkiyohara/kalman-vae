@@ -220,6 +220,8 @@ def train(config: Config) -> None:
                 dataloader=dataloader_test,
                 kvae=kvae,
                 sample_control=sample_control_test,
+                checkpoint_dir=config.checkpoint_dir,
+                epoch=epoch,
                 device=device,
                 dtype=dtype,
             )
