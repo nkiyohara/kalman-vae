@@ -13,6 +13,7 @@ from tqdm import tqdm
 import wandb
 from bouncing_ball.dataloaders.bouncing_data import BouncingBallDataLoader
 from config import Config
+from evaluation import evaluate
 from kalman_vae import KalmanVariationalAutoencoder
 from sample_control import SampleControl
 
@@ -80,6 +81,7 @@ def run_epoch(
     dtype: torch.dtype,
     mode: Literal["train", "test"],
     epoch: int,
+    sample_control: SampleControl,
 ) -> tuple[float, dict]:
     """
     Run training or testing for one epoch.
@@ -114,7 +116,7 @@ def run_epoch(
                 symmetrize_covariance=config.symmetrize_covariance,
                 burn_in=config.burn_in,
                 learn_weight_model=(epoch >= config.warmup_epochs),
-                sample_control=SampleControl(),
+                sample_control=sample_control,
             )
             loss = -elbo
             if mode == "train":
@@ -184,6 +186,10 @@ def train(config: Config) -> None:
         dataloader_train, config, device, dtype
     )
 
+    # Setup Sample Control
+    sample_control_train = SampleControl()
+    sample_control_test = SampleControl()
+
     # Training Loop
     for epoch in tqdm(range(config.epochs)):
         train_loss, train_metrics = run_epoch(
@@ -195,6 +201,7 @@ def train(config: Config) -> None:
             dtype=dtype,
             mode="train",
             epoch=epoch,
+            sample_control=sample_control_train,
         )
         test_loss, test_metrics = run_epoch(
             dataloader=dataloader_test,
@@ -205,7 +212,26 @@ def train(config: Config) -> None:
             dtype=dtype,
             mode="test",
             epoch=epoch,
+            sample_control=sample_control_test,
         )
+
+        if epoch > 0 and epoch % config.evaluation_interval == 0:
+            random_masking, continuous_masking, video_logs = evaluate(
+                dataloader=dataloader_test,
+                kvae=kvae,
+                sample_control=sample_control_test,
+            )
+
+            columns = list(video_logs[0].keys())
+            data = [list(log.values()) for log in video_logs]
+
+            log_eval = {
+                "random_masking": wandb.Table(dataframe=random_masking),
+                "continuous_masking": wandb.Table(dataframe=continuous_masking),
+                "video_log": wandb.Table(data=data, columns=columns),
+            }
+        else:
+            log_eval = {}
 
         # Log losses and metrics
         wandb.log(
@@ -215,6 +241,7 @@ def train(config: Config) -> None:
                 "train_metrics": train_metrics,
                 "test_metrics": test_metrics,
                 "epoch": epoch,
+                "evaluations": log_eval,
             }
         )
 

@@ -10,6 +10,7 @@ class Config(NamedTuple):
     checkpoint_dir: str  # Directory to save checkpoints
     project_name: str  # Name of the project
     name: str  # Name of the experiment
+    evaluation_interval: int  # Number of epochs between evaluations
 
     # Data Settings - Parameters related to data
     data_root_dir: str  # Root directory of the data
