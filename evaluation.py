@@ -51,13 +51,21 @@ def evaluate(
         dtype=dtype,
         device=device,
     )
-    continuous_masking, video_logs = evaluate_continuous_masking(
+    continuous_masking = evaluate_continuous_masking(
         dataloader=dataloader,
         kvae=kvae,
         sample_control=sample_control,
         dtype=dtype,
         device=device,
     )
+    video_logs = create_continuous_masking_video_log(
+        dataloader=dataloader,
+        kvae=kvae,
+        sample_control=sample_control,
+        dtype=dtype,
+        device=device,
+    )
+
     return random_masking, continuous_masking, video_logs
 
 
@@ -110,7 +118,7 @@ def evaluate_random_masking(
         )
     return pd.DataFrame(
         {
-            "batch_id": 0,
+            "batch_id": [0] * len(dropout_probabilities),
             "dropout_probabilities": dropout_probabilities,
             "filtering_incorrect_pixels": filtering_incorrect_pixels,
             "smoothing_incorrect_pixels": smoothing_incorrect_pixels,
@@ -124,8 +132,7 @@ def evaluate_continuous_masking(
     sample_control: SampleControl,
     dtype: torch.dtype,
     device: torch.device,
-    num_videos: int = 3,
-) -> tuple[pd.DataFrame, list[dict[str, Any]]]:
+) -> pd.DataFrame:
     batch = next(iter(dataloader))
     batch = (batch > 0.5).to(dtype=dtype, device=device)
     seq_length, batch_size, image_channels, *image_size = batch.shape
@@ -134,7 +141,6 @@ def evaluate_continuous_masking(
 
     filtering_incorrect_pixels = []
     smoothing_incorrect_pixels = []
-    video_logs = []
 
     for mask_length in mask_lengths:
         mask = create_continuous_mask(
@@ -170,7 +176,30 @@ def evaluate_continuous_masking(
             .tolist()
         )
 
+    return pd.DataFrame(
+        {
+            "batch_id": 0,
+            "mask_lengths": mask_lengths,
+            "filtering_incorrect_pixels": filtering_incorrect_pixels,
+            "smoothing_incorrect_pixels": smoothing_incorrect_pixels,
+        }
+    )
+
+
+def create_continuous_masking_video_log(
+    dataloader: torch.utils.data.DataLoader,
+    kvae: KalmanVariationalAutoencoder,
+    sample_control: SampleControl,
+    dtype: torch.dtype,
+    device: torch.device,
+    num_videos: int = 3,
+):
+    batch = next(iter(dataloader))
+    batch = (batch > 0.5).to(dtype=dtype, device=device)
+    seq_length, batch_size, image_channels, *image_size = batch.shape
+
     mask_lengths = [10, 20, 30, 40]
+    video_logs = []
     for mask_length in mask_lengths:
         video_count = 0
         mask = create_continuous_mask(
@@ -209,17 +238,7 @@ def evaluate_continuous_masking(
             }
             video_logs.append(log)
 
-    return (
-        pd.DataFrame(
-            {
-                "batch_id": 0,
-                "mask_lengths": mask_lengths,
-                "filtering_incorrect_pixels": filtering_incorrect_pixels,
-                "smoothing_incorrect_pixels": smoothing_incorrect_pixels,
-            }
-        ),
-        video_logs,
-    )
+    return video_logs
 
 
 def calculate_fraction_of_incorrect_pixels(image, reconstructed_image):
