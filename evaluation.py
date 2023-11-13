@@ -1,17 +1,12 @@
 import os
-from tempfile import TemporaryDirectory
-from tkinter import Canvas
-from typing import Any, Optional
 
 import cv2
-import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import torch
 from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 from matplotlib.colors import LinearSegmentedColormap
-from moviepy.editor import ImageSequenceClip
 
 import wandb
 from kalman_vae import KalmanVariationalAutoencoder
