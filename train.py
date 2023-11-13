@@ -216,7 +216,7 @@ def train(config: Config) -> None:
         )
 
         if epoch % config.evaluation_interval == 0:
-            random_masking, continuous_masking, video_logs = evaluate(
+            random_masking, continuous_masking = evaluate(
                 dataloader=dataloader_test,
                 kvae=kvae,
                 sample_control=sample_control_test,
@@ -230,7 +230,6 @@ def train(config: Config) -> None:
                 {
                     "random_masking": wandb.Table(dataframe=random_masking),
                     "continuous_masking": wandb.Table(dataframe=continuous_masking),
-                    "video_log": video_logs,
                     "epoch": epoch,
                 }
             )
@@ -243,7 +242,6 @@ def train(config: Config) -> None:
                 "train_metrics": train_metrics,
                 "test_metrics": test_metrics,
                 "epoch": epoch,
-                "evaluations": log_eval,
             }
         )
 
