@@ -207,7 +207,7 @@ def create_continuous_masking_video_log(
     seq_length, batch_size, image_channels, *image_size = batch.shape
 
     mask_lengths = [10, 20, 30, 40]
-
+    video_logs = []
     for mask_length in mask_lengths:
         mask = create_continuous_mask(
             seq_length=seq_length,
@@ -395,9 +395,6 @@ def write_trajectory_video(
         axes[2].grid()
 
         plt.tight_layout()
-        png_file = os.path.join(dname, f"{step}.png")
-        plt.savefig(png_file)
-        png_files.append(png_file)
 
         canvas = FigureCanvas(fig)
         canvas.draw()
