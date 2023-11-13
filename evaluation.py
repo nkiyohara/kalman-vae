@@ -41,6 +41,8 @@ def evaluate(
     dataloader: torch.utils.data.DataLoader,
     kvae: KalmanVariationalAutoencoder,
     sample_control: SampleControl,
+    checkpoint_dir: str,
+    epoch: int,
     dtype: torch.dtype,
     device: torch.device,
 ):
@@ -64,6 +66,7 @@ def evaluate(
         sample_control=sample_control,
         dtype=dtype,
         device=device,
+        video_directory=os.path.join(checkpoint_dir, "videos", f"epoch_{epoch}"),
     )
 
     return random_masking, continuous_masking, video_logs
@@ -190,6 +193,7 @@ def create_continuous_masking_video_log(
     dataloader: torch.utils.data.DataLoader,
     kvae: KalmanVariationalAutoencoder,
     sample_control: SampleControl,
+    video_directory: str,
     dtype: torch.dtype,
     device: torch.device,
     num_videos: int = 3,
@@ -201,7 +205,6 @@ def create_continuous_masking_video_log(
     mask_lengths = [10, 20, 30, 40]
     video_logs = []
     for mask_length in mask_lengths:
-        video_count = 0
         mask = create_continuous_mask(
             seq_length=seq_length,
             mask_length=mask_length,
@@ -209,26 +212,28 @@ def create_continuous_masking_video_log(
             device=batch.device,
             dtype=batch.dtype,
         )
+        video_count = 0
         for data_idx in range(batch_size):
             if video_count >= num_videos:
                 break
-            with TemporaryDirectory() as dname:
-                video_path = os.path.join(dname, f"mask_length_{mask_length}.mp4")
-                write_trajectory_video(
-                    data=batch[:, data_idx : data_idx + 1],
-                    kvae=kvae,
-                    observation_mask=mask[:, data_idx : data_idx + 1],
-                    filename=video_path,
-                    channel=0,
-                    fps=10,
-                    sample_control=sample_control,
-                )
-                video = wandb.Video(
-                    video_path,
-                    f"idx_{data_idx}_mask_length_{mask_length}",
-                    fps=10,
-                    format="mp4",
-                )
+            video_path = os.path.join(
+                video_directory, f"idx_{data_idx}_mask_length_{mask_length}.mp4"
+            )
+            write_trajectory_video(
+                data=batch[:, data_idx : data_idx + 1],
+                kvae=kvae,
+                observation_mask=mask[:, data_idx : data_idx + 1],
+                filename=video_path,
+                channel=0,
+                fps=10,
+                sample_control=sample_control,
+            )
+            video = wandb.Video(
+                video_path,
+                f"idx_{data_idx}_mask_length_{mask_length}",
+                fps=10,
+                format="mp4",
+            )
             video_count += 1
             log = {
                 "batch_id": 0,
