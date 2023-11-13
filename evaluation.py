@@ -289,7 +289,7 @@ def write_trajectory_video(
     fourcc = cv2.VideoWriter_fourcc(*"mp4v")
     frame_size = (1200, 400)
     os.makedirs(os.path.dirname(filename), exist_ok=True)
-    video = cv2.VideoWriter(filename, fourcc, fps, frame_size)
+    video = cv2.VideoWriter(filename, fourcc, fps, tuple(reversed(frame_size)))
 
     for step, (image) in enumerate((data)):
         fig, axes = plt.subplots(
