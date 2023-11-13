@@ -136,8 +136,6 @@ def evaluate_continuous_masking(
     smoothing_incorrect_pixels = []
     video_logs = []
 
-    video_count = 0
-
     for mask_length in mask_lengths:
         mask = create_continuous_mask(
             seq_length=seq_length,
@@ -171,6 +169,7 @@ def evaluate_continuous_masking(
             .numpy()
             .tolist()
         )
+        video_count = 0
         for data_idx in range(batch_size):
             if video_count >= num_videos:
                 break
@@ -180,7 +179,7 @@ def evaluate_continuous_masking(
                     data=batch[:, data_idx : data_idx + 1],
                     kvae=kvae,
                     info=info,
-                    observation_mask=mask,
+                    observation_mask=mask[:, data_idx : data_idx + 1],
                     filename=video_path,
                     channel=0,
                     fps=10,
