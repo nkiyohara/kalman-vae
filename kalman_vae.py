@@ -1,11 +1,9 @@
 import logging
-from math import e
 from typing import Literal, Optional
 
 import torch
 import torch.distributions as D
 import torch.nn as nn
-import torch.nn.functional as F
 
 from misc import _validate_shape, aggregate
 from sample_control import SampleControl

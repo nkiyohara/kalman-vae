@@ -60,6 +60,11 @@ def evaluate(
         dtype=dtype,
         device=device,
     )
+    table_directory = os.path.join(checkpoint_dir, "tables", f"epoch_{epoch}")
+    os.makedirs(table_directory, exist_ok=True)
+    random_masking.to_csv(os.path.join(table_directory, "random_masking.csv"))
+    continuous_masking.to_csv(os.path.join(table_directory, "continuous_masking.csv"))
+
     log_continuous_masking_video(
         dataloader=dataloader,
         kvae=kvae,
@@ -103,7 +108,7 @@ def evaluate_random_masking(
             seq_length, batch_size, image_channels, *image_size
         )
         filtering_incorrect_pixels.append(
-            calculate_fraction_of_incorrect_pixels(batch, filtered_images)
+            calculate_fraction_of_incorrect_pixels(batch, filtered_images, mask)
             .cpu()
             .detach()
             .numpy()
@@ -114,7 +119,7 @@ def evaluate_random_masking(
             seq_length, batch_size, image_channels, *image_size
         )
         smoothing_incorrect_pixels.append(
-            calculate_fraction_of_incorrect_pixels(batch, smoothed_images)
+            calculate_fraction_of_incorrect_pixels(batch, smoothed_images, mask)
             .cpu()
             .detach()
             .numpy()
@@ -163,7 +168,7 @@ def evaluate_continuous_masking(
             seq_length, batch_size, image_channels, *image_size
         )
         filtering_incorrect_pixels.append(
-            calculate_fraction_of_incorrect_pixels(batch, filtered_images)
+            calculate_fraction_of_incorrect_pixels(batch, filtered_images, mask)
             .cpu()
             .detach()
             .numpy()
@@ -173,7 +178,7 @@ def evaluate_continuous_masking(
             seq_length, batch_size, image_channels, *image_size
         )
         smoothing_incorrect_pixels.append(
-            calculate_fraction_of_incorrect_pixels(batch, smoothed_images)
+            calculate_fraction_of_incorrect_pixels(batch, smoothed_images, mask)
             .cpu()
             .detach()
             .numpy()
@@ -247,8 +252,14 @@ def log_continuous_masking_video(
             wandb.log(log)
 
 
-def calculate_fraction_of_incorrect_pixels(image, reconstructed_image):
-    return (image != (reconstructed_image > 0.5)).float().mean()
+def calculate_fraction_of_incorrect_pixels(
+    image: torch.Tensor,
+    reconstructed_image: torch.Tensor,
+    observation_mask: torch.Tensor,
+):
+    incorrect = image != (reconstructed_image > 0.5)
+    incorrect = incorrect * ~observation_mask
+    return incorrect.sum() / (~observation_mask).sum()
 
 
 def write_trajectory_video(
