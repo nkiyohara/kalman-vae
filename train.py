@@ -12,7 +12,7 @@ from tqdm import tqdm
 
 import wandb
 from bouncing_ball.dataloaders.bouncing_data import BouncingBallDataLoader
-from config import Config
+from config import TrainingConfig
 from evaluation import evaluate
 from kalman_vae import KalmanVariationalAutoencoder
 from sample_control import SampleControl
@@ -41,7 +41,7 @@ def setup_dataloaders(root_dir: str, batch_size: int) -> tuple[DataLoader, DataL
 
 def setup_model_optimizer_scheduler(
     dataloader_train: DataLoader,
-    config: Config,
+    config: TrainingConfig,
     device: torch.device,
     dtype: torch.dtype,
 ) -> tuple[KalmanVariationalAutoencoder, optim.Optimizer, lr_scheduler.LRScheduler]:
@@ -76,7 +76,7 @@ def run_epoch(
     dataloader: DataLoader,
     kvae: KalmanVariationalAutoencoder,
     optimizer: optim.Optimizer,
-    config: Config,
+    config: TrainingConfig,
     device: torch.device,
     dtype: torch.dtype,
     mode: Literal["train", "test"],
@@ -165,7 +165,7 @@ def sequence_first_collate_fn(batch: list) -> torch.Tensor:
     return data
 
 
-def train(config: Config) -> None:
+def train(config: TrainingConfig) -> None:
     """
     Main training function.
     """
@@ -188,7 +188,9 @@ def train(config: Config) -> None:
 
     # Setup Sample Control
     sample_control_train = SampleControl()
-    sample_control_test = SampleControl()
+    sample_control_test = SampleControl(
+        encoder="mean", decoder="mean", state_transition="mean", observation="mean"
+    )
 
     # Training Loop
     for epoch in tqdm(range(config.epochs)):
@@ -260,7 +262,7 @@ def train(config: Config) -> None:
         )
 
 
-def parse_args() -> Config:
+def parse_args() -> TrainingConfig:
     parser = argparse.ArgumentParser(
         description="Train a Kalman Variational Autoencoder"
     )
@@ -392,7 +394,7 @@ def parse_args() -> Config:
 
     args = parser.parse_args()
 
-    return Config(
+    return TrainingConfig(
         data_root_dir=args.data_root_dir,
         batch_size=args.batch_size,
         z_dim=args.z_dim,

@@ -45,6 +45,7 @@ def evaluate(
     epoch: int,
     dtype: torch.dtype,
     device: torch.device,
+    use_wandb: bool = True,
 ):
     random_masking = evaluate_random_masking(
         dataloader=dataloader,
@@ -73,6 +74,7 @@ def evaluate(
         device=device,
         video_directory=os.path.join(checkpoint_dir, "videos", f"epoch_{epoch}"),
         metadata={"epoch": epoch},
+        use_wandb=use_wandb,
     )
 
     return random_masking, continuous_masking
@@ -202,6 +204,7 @@ def log_continuous_masking_video(
     video_directory: str,
     dtype: torch.dtype,
     device: torch.device,
+    use_wandb: bool,
     metadata: Optional[dict] = None,
     num_videos: int = 3,
 ):
@@ -234,22 +237,23 @@ def log_continuous_masking_video(
                 fps=10,
                 sample_control=sample_control,
             )
-            video = wandb.Video(
-                video_path,
-                f"idx_{data_idx}_mask_length_{mask_length}",
-                fps=10,
-                format="mp4",
-            )
             video_count += 1
-            log = {
-                "video": video,
-                "batch_id": 0,
-                "data_idx": data_idx,
-                "mask_length": mask_length,
-            }
-            if metadata is not None:
-                log.update(metadata)
-            wandb.log(log)
+            if use_wandb:
+                video = wandb.Video(
+                    video_path,
+                    f"idx_{data_idx}_mask_length_{mask_length}",
+                    fps=10,
+                    format="mp4",
+                )
+                log = {
+                    "video": video,
+                    "batch_id": 0,
+                    "data_idx": data_idx,
+                    "mask_length": mask_length,
+                }
+                if metadata is not None:
+                    log.update(metadata)
+                wandb.log(log)
 
 
 def calculate_fraction_of_incorrect_pixels(

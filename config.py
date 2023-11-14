@@ -1,8 +1,10 @@
 from typing import Literal, NamedTuple
 
 
-class Config(NamedTuple):
-    """Configuration for the experiment"""
+class TrainingConfig(NamedTuple):
+    """
+    Configuration for the training phase of the experiment.
+    """
 
     # Environment Settings - Parameters related to the experimental environment
     device: str  # Device to use for training
@@ -36,3 +38,32 @@ class Config(NamedTuple):
     learning_rate_decay: float  # Learning rate decay
     scheduler_step: int  # Number of epochs between scheduler steps
     burn_in: int  # Number of burn-in steps
+
+
+class EvaluationConfig(NamedTuple):
+    """
+    Configuration for the evaluation phase of the experiment.
+    """
+
+    # Evaluation Environment Settings - Parameters related to the setup for evaluation
+    device: str  # Device to use for evaluation (e.g., 'cuda', 'cpu')
+    dtype: Literal[
+        "float", "double"
+    ]  # Data type precision for tensors during evaluation
+    checkpoint_dir: str  # Directory for loading model checkpoints
+    epoch: int  # Specific epoch of the model to be evaluated
+    num_evaluations: int  # Total number of separate evaluations to be conducted
+    a_dim: int  # Dimension of encoded space a
+    z_dim: int  # Dimension of latent space z
+    K: int  # Number of matrices for weighted average in observation and transition matrices
+    decoder_type: Literal["bernoulli", "gaussian"]  # Type of decoder
+
+    # Data Settings - Parameters concerning the data used in evaluation
+    data_root_dir: str  # Root directory containing evaluation data
+    batch_operation: Literal[
+        "mean", "sum"
+    ]  # Aggregation operation over batches (e.g., for loss calculation)
+    sequence_operation: Literal[
+        "mean", "sum"
+    ]  # Aggregation operation over sequences (e.g., in sequence modeling tasks)
+    symmetrize_covariance: bool  # Flag to determine if covariance matrices should be s

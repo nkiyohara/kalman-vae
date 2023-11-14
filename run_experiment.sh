@@ -20,7 +20,7 @@ python train.py \
     --kalman_weight 1.0 \
     --kl_weight 0.0 \
     --symmetrize_covariance True \
-    --epochs 80 \
+    --epochs 100 \
     --warmup_epochs 10 \
     --learning_rate 0.007 \
     --learning_rate_decay 0.8 \
@@ -28,7 +28,7 @@ python train.py \
     --batch_operation "mean" \
     --sequence_operation "mean" \
     --scheduler_step 20 \
-    --device "cuda:1" \
+    --device "cuda:0" \
     --dtype "float64" \
     --checkpoint_dir "$checkpoint_directory" \
     --name "$experiment_name" \

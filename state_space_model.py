@@ -4,10 +4,9 @@ from typing import Optional
 import torch
 import torch.distributions as D
 import torch.nn as nn
-import torch.nn.functional as F
 
 from dynamics_parameter_network import LSTMModel
-from misc import _validate_shape, aggregate
+from misc import _validate_shape
 from sample_control import SampleControl
 
 logger = logging.getLogger(__name__)

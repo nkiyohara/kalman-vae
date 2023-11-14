@@ -1,4 +1,3 @@
-import torch
 import torch.distributions as D
 import torch.nn as nn
 import torch.nn.functional as F
