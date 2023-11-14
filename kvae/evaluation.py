@@ -6,12 +6,12 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import torch
+from kalman_vae import KalmanVariationalAutoencoder
 from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 from matplotlib.colors import LinearSegmentedColormap
+from sample_control import SampleControl
 
 import wandb
-from kalman_vae import KalmanVariationalAutoencoder
-from sample_control import SampleControl
 
 
 def create_continuous_mask(seq_length, mask_length, batch_size, device, dtype):

@@ -4,7 +4,6 @@ from typing import Literal, Optional
 import torch
 import torch.distributions as D
 import torch.nn as nn
-
 from misc import _validate_shape, aggregate
 from sample_control import SampleControl
 from state_space_model import StateSpaceModel

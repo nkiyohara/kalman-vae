@@ -1,4 +1,4 @@
 [submodule "bouncing_ball"]
-	path = bouncing_ball
+	path = kvae/bouncing_ball
 	url = https://github.com/charlio23/bouncing-ball.git
     ignore = dirty

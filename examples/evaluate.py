@@ -5,13 +5,12 @@ import numpy as np
 import torch
 import torch.optim as optim
 import torch.optim.lr_scheduler as lr_scheduler
-from torch.utils.data import DataLoader
-
 from bouncing_ball.dataloaders.bouncing_data import BouncingBallDataLoader
 from config import EvaluationConfig
 from evaluation import evaluate as evaluate_model
 from kalman_vae import KalmanVariationalAutoencoder
 from sample_control import SampleControl
+from torch.utils.data import DataLoader
 
 
 def setup_dataloader(root_dir: str, batch_size: int) -> DataLoader:
