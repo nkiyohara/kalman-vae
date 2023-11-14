@@ -21,6 +21,9 @@ class TrainingConfig(NamedTuple):
     sequence_operation: Literal["mean", "sum"]  # Operation per sequence
 
     # Model Settings - Parameters related to the configuration of the model
+    dynamics_parameter_network: Literal[
+        "mlp", "lstm"
+    ]  # Type of dynamics parameter network
     a_dim: int  # Dimension of encoded space a
     z_dim: int  # Dimension of latent space z
     K: int  # Number of matrices for weighted average in observation and transition matrices
@@ -53,6 +56,9 @@ class EvaluationConfig(NamedTuple):
     checkpoint_dir: str  # Directory for loading model checkpoints
     epoch: int  # Specific epoch of the model to be evaluated
     num_evaluations: int  # Total number of separate evaluations to be conducted
+    dynamics_parameter_network: Literal[
+        "mlp", "lstm"
+    ]  # Type of dynamics parameter network
     a_dim: int  # Dimension of encoded space a
     z_dim: int  # Dimension of latent space z
     K: int  # Number of matrices for weighted average in observation and transition matrices

@@ -21,6 +21,7 @@ class KalmanVariationalAutoencoder(nn.Module):
         a_dim,
         z_dim,
         K,
+        dynamics_parameter_network: Literal["mlp", "lstm"],
         decoder_type: Literal["gaussian", "bernoulli"] = "gaussian",
     ):
         super(KalmanVariationalAutoencoder, self).__init__()
@@ -31,57 +32,15 @@ class KalmanVariationalAutoencoder(nn.Module):
             self.decoder = BernoulliDecoder(a_dim, image_size, image_channels)
         else:
             raise ValueError("Unknown decoder type: {}".format(decoder_type))
-        self.state_space_model = StateSpaceModel(a_dim=a_dim, z_dim=z_dim, K=K)
+        self.state_space_model = StateSpaceModel(
+            a_dim=a_dim,
+            z_dim=z_dim,
+            K=K,
+            dynamics_parameter_network=dynamics_parameter_network,
+        )
         self.a_dim = a_dim
         self.z_dim = z_dim
         self.register_buffer("_zero_val", torch.tensor(0.0))
-
-    def get_distribution_params(
-        self, xs, sample_control: SampleControl, symmetrize_covariance=True
-    ):
-        """Returns the parameters of the distribution over the latent variables"""
-
-        seq_length = xs.shape[0]
-        batch_size = xs.shape[1]
-
-        as_distrib = self.encoder(xs.reshape(-1, *xs.shape[2:]))
-        as_sample = as_distrib.rsample().view(seq_length, batch_size, self.a_dim)
-
-        # Kalman filter and smoother
-        (
-            filter_means,
-            filter_covariances,
-            filter_next_means,
-            filter_next_covariances,
-            mat_As,
-            mat_Cs,
-        ) = self.state_space_model.kalman_filter(
-            as_sample,
-            learn_weight_model=False,
-            sample_control=sample_control,
-            symmetrize_covariance=symmetrize_covariance,
-        )
-        means, covariances = self.state_space_model.kalman_smooth(
-            as_sample,
-            filter_means=filter_means,
-            filter_covariances=filter_covariances,
-            filter_next_means=filter_next_means,
-            filter_next_covariances=filter_next_covariances,
-            mat_As=mat_As,
-            mat_Cs=mat_Cs,
-            symmetrize_covariance=symmetrize_covariance,
-        )
-
-        return {
-            "filter_means": filter_means,
-            "filter_covariances": filter_covariances,
-            "filter_next_means": filter_next_means,
-            "filter_next_covariances": filter_next_covariances,
-            "mat_As": mat_As,
-            "mat_Cs": mat_Cs,
-            "means": means,
-            "covariances": covariances,
-        }
 
     def elbo(
         self,
@@ -329,103 +288,5 @@ class KalmanVariationalAutoencoder(nn.Module):
             "as": as_,
             "zs": zs,
             "filter_as": filter_as,
-            "as_resampled": as_resampled,
-        }
-
-    def predict_future(
-        self,
-        xs,
-        num_steps,
-        sample_control: SampleControl,
-        symmetrize_covariance=True,
-    ):
-        # TODO: It's too dirty to feed the same data to the encoder
-
-        seq_length = xs.shape[0]
-        batch_size = xs.shape[1]
-
-        as_distrib = self.encoder(xs.reshape(-1, *xs.shape[2:]))
-
-        if sample_control.encoder == "sample":
-            as_ = as_distrib.sample().view(seq_length, batch_size, self.a_dim)
-        elif sample_control.encoder == "mean":
-            as_ = as_distrib.mean.view(seq_length, batch_size, self.a_dim)
-        else:
-            raise ValueError(
-                "Invalid sample control for encoder: {}".format(sample_control.encoder)
-            )
-
-        # Kalman filter and smoother
-        (
-            filter_means,
-            filter_covariances,
-            filter_next_means,
-            filter_next_covariances,
-            mat_As,
-            mat_Cs,
-            as_filter,
-        ) = self.state_space_model.kalman_filter(
-            as_,
-            sample_control=sample_control,
-            learn_weight_model=False,
-            symmetrize_covariance=symmetrize_covariance,
-        )
-        means, covariances, zs, as_resampled = self.state_space_model.kalman_smooth(
-            as_,
-            filter_means=filter_means,
-            filter_covariances=filter_covariances,
-            filter_next_means=filter_next_means,
-            filter_next_covariances=filter_next_covariances,
-            mat_As=mat_As,
-            mat_Cs=mat_Cs,
-            symmetrize_covariance=symmetrize_covariance,
-            sample_control=sample_control,
-        )
-
-        (
-            as_,
-            means,
-            covariances,
-            filter_next_means,
-            filter_next_covariances,
-            mat_As,
-            mat_Cs,
-        ) = self.state_space_model.predict_future(
-            as_,
-            means,
-            covariances,
-            filter_next_means,
-            filter_next_covariances,
-            mat_As,
-            mat_Cs,
-            num_steps,
-            sample_control=sample_control,
-        )
-
-        # shape of as_: (sequence_length + num_steps, batch_size, a_dim, 1)
-        xs_distrib = self.decoder(as_.view(-1, self.a_dim))
-
-        if sample_control.decoder == "sample":
-            xs = xs_distrib.sample()
-        elif sample_control.decoder == "mean":
-            xs = xs_distrib.mean
-        else:
-            raise ValueError(
-                "Invalid sample control for decoder: {}".format(sample_control.decoder)
-            )
-
-        xs = xs.view(seq_length + num_steps, batch_size, *xs.shape[1:])
-
-        return xs, {
-            "as": as_,
-            "means": means,
-            "covariances": covariances,
-            "filter_means": filter_means,
-            "filter_covariances": filter_covariances,
-            "filter_next_means": filter_next_means,
-            "filter_next_covariances": filter_next_covariances,
-            "mat_As": mat_As,
-            "mat_Cs": mat_Cs,
-            "as_filter": as_filter,
             "as_resampled": as_resampled,
         }

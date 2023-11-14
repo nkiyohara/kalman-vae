@@ -1,11 +1,11 @@
 import logging
-from typing import Optional
+from typing import Literal, Optional
 
 import torch
 import torch.distributions as D
 import torch.nn as nn
 
-from dynamics_parameter_network import LSTMModel
+from dynamics_parameter_network import LSTMModel, MLPModel
 from misc import _validate_shape
 from sample_control import SampleControl
 
@@ -18,6 +18,7 @@ class StateSpaceModel(nn.Module):
         a_dim: int,
         z_dim: int,
         K: int,
+        dynamics_parameter_network: Literal["mlp", "lstm"],
         hidden_dim: int = 128,
         num_layers: int = 2,
         Q_reg: float = 1e-3,
@@ -73,9 +74,20 @@ class StateSpaceModel(nn.Module):
             )
             self.initial_state_covariance = initial_state_covariance
 
-        self.weight_model = LSTMModel(
-            a_dim, K, hidden_dim=hidden_dim, num_layers=num_layers
-        )
+        if dynamics_parameter_network == "mlp":
+            self.weight_model = MLPModel(
+                a_dim, K, hidden_dim=hidden_dim, num_layers=num_layers
+            )
+        elif dynamics_parameter_network == "lstm":
+            self.weight_model = LSTMModel(
+                a_dim, K, hidden_dim=hidden_dim, num_layers=num_layers
+            )
+        else:
+            raise ValueError(
+                "Invalid dynamics_parameter_network: {}".format(
+                    dynamics_parameter_network
+                )
+            )
         # input shape: (sequence_length, batch_size, a_dim)
         # output shape: (sequence_length, batch_size, K)
 

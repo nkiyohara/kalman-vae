@@ -61,6 +61,7 @@ def setup_model_optimizer_scheduler(
             z_dim=config.z_dim,
             K=config.K,
             decoder_type=config.decoder_type,
+            dynamics_parameter_network=config.dynamics_parameter_network,
         )
         .to(dtype=dtype)
         .to(device)
@@ -290,6 +291,13 @@ def parse_args() -> TrainingConfig:
         help="Number of matrices for calculating the weighted average in the observation and transition matrices",
     )
     model_group.add_argument(
+        "--dynamics_parameter_network",
+        type=str,
+        default="lstm",
+        choices=["mlp", "lstm"],
+        help="Type of dynamics parameter network",
+    )
+    model_group.add_argument(
         "--decoder_type",
         type=str,
         default="bernoulli",
@@ -400,6 +408,7 @@ def parse_args() -> TrainingConfig:
         z_dim=args.z_dim,
         a_dim=args.a_dim,
         K=args.K,
+        dynamics_parameter_network=args.dynamics_parameter_network,
         decoder_type=args.decoder_type,
         reconst_weight=args.reconst_weight,
         regularization_weight=args.regularization_weight,

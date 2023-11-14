@@ -14,6 +14,7 @@ python train.py \
     --z_dim 4 \
     --a_dim 2 \
     --K 3 \
+    --dynamics_parameter_network "lstm" \
     --decoder_type "bernoulli" \
     --reconst_weight 1.0 \
     --regularization_weight 0.3 \
