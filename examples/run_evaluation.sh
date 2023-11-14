@@ -51,7 +51,7 @@ python evaluate.py \
     --checkpoint_dir "$checkpoint_directory" \
     --epoch $epoch \
     --num_evaluations 5 \
-    --data_root_dir "bouncing_ball/datasets/bouncing-ball" \
+    --data_root_dir "../kvae/bouncing_ball/datasets/bouncing_ball" \
     --batch_operation "mean" \
     --sequence_operation "mean" \
     --symmetrize_covariance True \

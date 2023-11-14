@@ -10,6 +10,7 @@ mkdir -p "$checkpoint_directory"
 
 # Run the Python script with all arguments explicitly set
 python train.py \
+    --data_root_dir "../kvae/bouncing_ball/datasets/bouncing_ball" \
     --batch_size 128 \
     --z_dim 4 \
     --a_dim 2 \
