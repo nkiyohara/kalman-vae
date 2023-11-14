@@ -42,3 +42,7 @@ import_name = "kvae"
 
 [tool.kvae.bouncing_ball]
 git_submodule = "required"
+
+[tool.isort]
+profile = "black"
+known_first_party = "kvae"

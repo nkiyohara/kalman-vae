@@ -7,15 +7,15 @@ import numpy as np
 import torch
 import torch.optim as optim
 import torch.optim.lr_scheduler as lr_scheduler
-from bouncing_ball.dataloaders.bouncing_data import BouncingBallDataLoader
-from config import TrainingConfig
-from evaluation import evaluate
-from kalman_vae import KalmanVariationalAutoencoder
-from sample_control import SampleControl
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 import wandb
+from kvae.bouncing_ball.dataloaders.bouncing_data import BouncingBallDataLoader
+from kvae.config import TrainingConfig
+from kvae.evaluation import evaluate
+from kvae.kalman_vae import KalmanVariationalAutoencoder
+from kvae.sample_control import SampleControl
 
 
 def setup_dataloaders(root_dir: str, batch_size: int) -> tuple[DataLoader, DataLoader]:

@@ -4,9 +4,10 @@ from typing import Literal, Optional
 import torch
 import torch.distributions as D
 import torch.nn as nn
-from dynamics_parameter_network import LSTMModel, MLPModel
-from misc import _validate_shape
-from sample_control import SampleControl
+
+from kvae.dynamics_parameter_network import LSTMModel, MLPModel
+from kvae.misc import _validate_shape
+from kvae.sample_control import SampleControl
 
 logger = logging.getLogger(__name__)
 

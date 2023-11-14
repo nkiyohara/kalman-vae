@@ -1,7 +1,8 @@
 import torch.distributions as D
 import torch.nn as nn
 import torch.nn.functional as F
-from misc import compute_conv2d_output_size
+
+from kvae.misc import compute_conv2d_output_size
 
 
 class Encoder(nn.Module):

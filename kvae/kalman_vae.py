@@ -4,10 +4,11 @@ from typing import Literal, Optional
 import torch
 import torch.distributions as D
 import torch.nn as nn
-from misc import _validate_shape, aggregate
-from sample_control import SampleControl
-from state_space_model import StateSpaceModel
-from variational_autoencoder import BernoulliDecoder, Encoder, GaussianDecoder
+
+from kvae.misc import _validate_shape, aggregate
+from kvae.sample_control import SampleControl
+from kvae.state_space_model import StateSpaceModel
+from kvae.variational_autoencoder import BernoulliDecoder, Encoder, GaussianDecoder
 
 logger = logging.getLogger(__name__)
 
