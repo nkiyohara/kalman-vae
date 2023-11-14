@@ -3,15 +3,12 @@ requires = ["setuptools>=42", "wheel", "setuptools_scm[toml]>=3.4"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "Kalman VAE"
+name = "Kalman_VAE"
 description = "A PyTorch implementation of 'A Disentangled Recognition and Nonlinear Dynamics Model for Unsupervised Learning'"
 authors = [{ name = "Naoki Kiyohara", email = "n.kiyohara23@imperial.ac.uk" }]
-license = "MIT"
+license = { text = "MIT" }
 requires-python = ">=3.9"
-
-[project.urls]
-Source = "https://github.com/nkgvl/kalman-vae.git"
-
+dynamic = ["version"]
 dependencies = [
     "opencv-python==4.7.0",
     "matplotlib==3.8.0",
@@ -26,6 +23,9 @@ dependencies = [
     "wandb==0.15.12"
 ]
 
+[project.urls]
+Source = "https://github.com/nkgvl/kalman-vae.git"
+
 [project.optional-dependencies]
 dev = [
     "pytest>=6.0",
@@ -34,7 +34,7 @@ dev = [
 ]
 
 [tool.setuptools_scm]
-write_to = "src/kalman_vae/_version.py"
+write_to = "kvae/_version.py"
 fallback_version = "0.1.0"
 
 [tool.kvae]
