@@ -311,13 +311,13 @@ def write_trajectory_video(
     cmap = plt.get_cmap("tab10")
 
     fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-    frame_size = (1200, 400)
+    frame_size = (1600, 400)
     os.makedirs(os.path.dirname(filename), exist_ok=True)
     video = cv2.VideoWriter(filename, fourcc, fps, frame_size)
 
     for step, (image) in enumerate((data)):
         fig, axes = plt.subplots(
-            figsize=(frame_size[0] / 100, frame_size[1] / 100), nrows=1, ncols=3
+            figsize=(frame_size[0] / 100, frame_size[1] / 100), nrows=1, ncols=4
         )
         fig.suptitle(f"$t = {step}$")
 
@@ -407,9 +407,16 @@ def write_trajectory_video(
             label="Observed",
         )
 
+        axes[3].bar(
+            [str(i) for i in range(kvae.state_space_model.K)],
+            info["weights"][step, idx].cpu().detach().numpy(),
+        )
+        axes[3].set_ylim(0, 1)
+
         axes[0].set_title("from filtered $\\mathbf{z}$")
         axes[1].set_title("from smoothed $\\mathbf{z}$")
         axes[2].set_title("$\\mathbf{a}$ space")
+        axes[3].set_title("Mixture weights")
         axes[2].legend()
         axes[2].grid()
 

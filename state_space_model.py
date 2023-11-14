@@ -202,6 +202,8 @@ class StateSpaceModel(nn.Module):
         mat_As_list = []
         mat_Cs_list = []
 
+        weights = []
+
         for t in range(sequence_length):
             weight = weight_next
 
@@ -212,12 +214,44 @@ class StateSpaceModel(nn.Module):
             mat_C = torch.einsum("tbk,kij->bij", weight, self.mat_C_K)
 
             a_observed = as_[t]
-            z_sample = D.MultivariateNormal(
-                torch.bmm(mat_A, mean_t_plus.unsqueeze(-1)).squeeze(-1), self.mat_Q
-            ).rsample()
-            a_unobserved = D.MultivariateNormal(
-                torch.bmm(mat_C, z_sample.unsqueeze(-1)).squeeze(-1), self.mat_R
-            ).rsample()
+
+            if sample_control.state_transition == "sample":
+                z_sample = D.MultivariateNormal(
+                    torch.bmm(mat_A, mean_t_plus.unsqueeze(-1)).squeeze(-1), self.mat_Q
+                ).rsample()
+            elif sample_control.state_transition == "mean":
+                if self.training:
+                    raise ValueError(
+                        "sample_control.state_transition must be 'sample' for training"
+                    )
+                z_sample = D.MultivariateNormal(
+                    torch.bmm(mat_A, mean_t_plus.unsqueeze(-1)).squeeze(-1), self.mat_Q
+                ).mean
+            else:
+                raise ValueError(
+                    "Invalid sample_control.state_transition: {}".format(
+                        sample_control.state_transition
+                    )
+                )
+
+            if sample_control.observation == "sample":
+                a_unobserved = D.MultivariateNormal(
+                    torch.bmm(mat_C, z_sample.unsqueeze(-1)).squeeze(-1), self.mat_R
+                ).rsample()
+            elif sample_control.observation == "mean":
+                if self.training:
+                    raise ValueError(
+                        "sample_control.observation must be 'sample' for training"
+                    )
+                a_unobserved = D.MultivariateNormal(
+                    torch.bmm(mat_C, z_sample.unsqueeze(-1)).squeeze(-1), self.mat_R
+                ).mean
+            else:
+                raise ValueError(
+                    "Invalid sample_control.observation: {}".format(
+                        sample_control.observation
+                    )
+                )
 
             if observation_mask is None:
                 a_for_weight = a_observed
@@ -297,6 +331,7 @@ class StateSpaceModel(nn.Module):
                 mean_t_plus = mean_t_plus.detach()
                 cov_t_plus = cov_t_plus.detach()
 
+            weights.append(weight)
             means.append(mean_t)
             covariances.append(cov_t)
             next_means.append(mean_t_plus)
@@ -320,6 +355,7 @@ class StateSpaceModel(nn.Module):
             mat_As,
             mat_Cs,
             as_for_weight,
+            torch.cat(weights),
         )
 
     def kalman_smooth(

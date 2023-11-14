@@ -129,6 +129,7 @@ class KalmanVariationalAutoencoder(nn.Module):
             mat_As,
             mat_Cs,
             filter_as,
+            weights,
         ) = self.state_space_model.kalman_filter(
             as_,
             sample_control=sample_control,
@@ -260,22 +261,12 @@ class KalmanVariationalAutoencoder(nn.Module):
             "regularization_weight": regularization_weight,
             "kalman_weight": kalman_weight,
             "kl_weight": kl_weight,
-            "reconstruction": weighted_reconstruction_obj.cpu().detach().numpy()
-            if xs is not None
-            else 0.0,
-            "regularization": weighted_regularization_obj.cpu().detach().numpy()
-            if xs is not None
-            else 0.0,
-            "kl": weighted_kl_reg.cpu().detach().numpy(),
-            "kalman_observation_log_likelihood": weighted_kalman_observation_log_likelihood.cpu()
-            .detach()
-            .numpy(),
-            "kalman_state_transition_log_likelihood": weighted_kalman_state_transition_log_likelihood.cpu()
-            .detach()
-            .numpy(),
-            "kalman_posterior_log_likelihood": weighted_kalman_posterior_log_likelihood.cpu()
-            .detach()
-            .numpy(),
+            "reconstruction": weighted_reconstruction_obj if xs is not None else 0.0,
+            "regularization": weighted_regularization_obj if xs is not None else 0.0,
+            "kl": weighted_kl_reg,
+            "kalman_observation_log_likelihood": weighted_kalman_observation_log_likelihood,
+            "kalman_state_transition_log_likelihood": weighted_kalman_state_transition_log_likelihood,
+            "kalman_posterior_log_likelihood": weighted_kalman_posterior_log_likelihood,
             "observation_mask": observation_mask,
             "filter_means": filter_means,
             "filter_covariances": filter_covariances,
@@ -283,6 +274,7 @@ class KalmanVariationalAutoencoder(nn.Module):
             "filter_next_covariances": filter_next_covariances,
             "mat_As": mat_As,
             "mat_Cs": mat_Cs,
+            "weights": weights,
             "means": means,
             "covariances": covariances,
             "as": as_,

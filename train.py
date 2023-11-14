@@ -218,24 +218,25 @@ def train(config: TrainingConfig) -> None:
             sample_control=sample_control_test,
         )
 
-        if epoch % config.evaluation_interval == 0:
-            random_masking, continuous_masking = evaluate(
-                dataloader=dataloader_test,
-                kvae=kvae,
-                sample_control=sample_control_test,
-                checkpoint_dir=config.checkpoint_dir,
-                epoch=epoch,
-                device=device,
-                dtype=dtype,
-            )
+        if config.evaluation_interval > 0:
+            if epoch % config.evaluation_interval == 0:
+                random_masking, continuous_masking = evaluate(
+                    dataloader=dataloader_test,
+                    kvae=kvae,
+                    sample_control=sample_control_test,
+                    checkpoint_dir=config.checkpoint_dir,
+                    epoch=epoch,
+                    device=device,
+                    dtype=dtype,
+                )
 
-            wandb.log(
-                {
-                    "random_masking": wandb.Table(dataframe=random_masking),
-                    "continuous_masking": wandb.Table(dataframe=continuous_masking),
-                    "epoch": epoch,
-                }
-            )
+                wandb.log(
+                    {
+                        "random_masking": wandb.Table(dataframe=random_masking),
+                        "continuous_masking": wandb.Table(dataframe=continuous_masking),
+                        "epoch": epoch,
+                    }
+                )
 
         # Log losses and metrics
         wandb.log(
@@ -397,7 +398,7 @@ def parse_args() -> TrainingConfig:
         "--evaluation_interval",
         type=int,
         default=10,
-        help="Number of epochs between evaluations",
+        help="Number of epochs between evaluations. Set to 0 to disable evaluation.",
     )
 
     args = parser.parse_args()
