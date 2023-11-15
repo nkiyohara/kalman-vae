@@ -46,17 +46,19 @@ Install the K-VAE package using pip:
 pip install .
 ```
 
-Modify and run the training script:
+Modify `examples/run_training.sh` and run the training script:
 
 ```bash
-bash examples/run_training.sh
+cd examples
+bash run_training.sh
 ```
 
 ### Evaluation
-After training, modify and run the evaluation script to assess performance:
+After training, modify `examples/run_evaluation.sh` and run the evaluation script to assess performance:
 
 ```bash
-bash examples/run_evaluation.sh --checkpoint_dir [YOUR_CHECKPOINT_DIR] --epoch [EPOCH_NUMBER]
+cd examples
+bash run_evaluation.sh --checkpoint_dir [YOUR_CHECKPOINT_DIR] --epoch [EPOCH_NUMBER]
 ```
 
 Evaluation videos and performance tables will be saved in videos/ and tables/ directories under the specified checkpoint directory.
