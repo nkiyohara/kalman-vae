@@ -324,12 +324,6 @@ def parse_args() -> TrainingConfig:
         help="Weight for regularization loss",
     )
     model_group.add_argument(
-        "--symmetrize_covariance",
-        type=bool,
-        default=False,
-        help="Symmetrize the covariance matrix",
-    )
-    model_group.add_argument(
         "--kalman_weight", type=float, default=1.0, help="Weight for Kalman loss"
     )
     model_group.add_argument(
@@ -340,8 +334,7 @@ def parse_args() -> TrainingConfig:
     )
     model_group.add_argument(
         "--learn_noise_covariance",
-        type=bool,
-        default=False,
+        action="store_true",
         help="Learn the noise covariance matrix",
     )
     model_group.add_argument(
@@ -449,7 +442,7 @@ def parse_args() -> TrainingConfig:
         initial_noise_scale=args.initial_noise_scale,
         init_transition_reg_weight=args.init_transition_reg_weight,
         init_observation_reg_weight=args.init_observation_reg_weight,
-        symmetrize_covariance=args.symmetrize_covariance,
+        symmetrize_covariance=True,
         epochs=args.epochs,
         warmup_epochs=args.warmup_epochs,
         learning_rate=args.learning_rate,
