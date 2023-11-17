@@ -61,7 +61,9 @@ cd examples
 bash run_evaluation.sh --checkpoint_dir [YOUR_CHECKPOINT_DIR] --epoch [EPOCH_NUMBER]
 ```
 
-Evaluation videos and performance tables will be saved in videos/ and tables/ directories under the specified checkpoint directory.
+Evaluation videos and performance tables will be saved in the `videos/` and `tables/` directories under the specified checkpoint directory. For an example of the output, see the evaluation video here:
+
+https://github.com/nkgvl/kalman-vae/assets/25709179/ecdc82c6-2cd3-428c-8128-ccd397702023
 
 ## Usage
 
