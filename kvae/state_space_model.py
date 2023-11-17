@@ -23,10 +23,13 @@ class StateSpaceModel(nn.Module):
         num_layers: int = 2,
         Q_reg: float = 1e-3,
         R_reg: float = 1e-3,
-        init_reg_weight: float = 0.9,
+        init_transition_reg_weight: float = 0.9,
+        init_observation_reg_weight: float = 0.9,
         initial_state_mean: Optional[torch.Tensor] = None,
         initial_state_covariance: Optional[torch.Tensor] = None,
         fix_matrices: bool = False,
+        learn_noise_covariance: bool = False,
+        init_noise_scale: float = 1.0,
     ):
         super(StateSpaceModel, self).__init__()
 
@@ -36,23 +39,31 @@ class StateSpaceModel(nn.Module):
         self.K = K
 
         self._mat_A_K = nn.Parameter(
-            (1.0 - init_reg_weight) * torch.randn(K, z_dim, z_dim)
-            + init_reg_weight * torch.eye(z_dim)
+            (1.0 - init_transition_reg_weight) * torch.randn(K, z_dim, z_dim)
+            + init_transition_reg_weight * torch.eye(z_dim)
         )
         self._mat_C_K = nn.Parameter(
-            (1.0 - init_reg_weight) * torch.randn(K, a_dim, z_dim)
-            + init_reg_weight * torch.eye(a_dim, z_dim)
+            (1.0 - init_observation_reg_weight) * torch.randn(K, a_dim, z_dim)
+            + init_observation_reg_weight * torch.eye(a_dim, z_dim)
         )
-        mat_Q = (1.0 - init_reg_weight) * torch.randn(
-            z_dim, z_dim
-        ) + init_reg_weight * torch.eye(z_dim)
-        mat_Q = mat_Q @ mat_Q.T
-        mat_R = (1.0 - init_reg_weight) * torch.randn(
-            a_dim, a_dim
-        ) + init_reg_weight * torch.eye(a_dim)
-        mat_R = mat_R @ mat_R.T
-        self._mat_Q_L = nn.Parameter(torch.linalg.cholesky((mat_Q + mat_Q.T) / 2.0))
-        self._mat_R_L = nn.Parameter(torch.linalg.cholesky((mat_R + mat_R.T) / 2.0))
+        # mat_Q = (1.0 - init_reg_weight) * torch.randn(
+        #     z_dim, z_dim
+        # ) + init_reg_weight * torch.eye(z_dim)
+        # mat_Q = mat_Q @ mat_Q.T
+        # mat_R = (1.0 - init_reg_weight) * torch.randn(
+        #     a_dim, a_dim
+        # ) + init_reg_weight * torch.eye(a_dim)
+        # mat_R = mat_R @ mat_R.T
+        mat_Q = init_noise_scale * torch.eye(z_dim)
+        mat_R = init_noise_scale * torch.eye(a_dim)
+        self._mat_Q_L = nn.Parameter(
+            torch.linalg.cholesky((mat_Q + mat_Q.T) / 2.0),
+            requires_grad=learn_noise_covariance,
+        )
+        self._mat_R_L = nn.Parameter(
+            torch.linalg.cholesky((mat_R + mat_R.T) / 2.0),
+            requires_grad=learn_noise_covariance,
+        )
         self._a_eye = torch.eye(a_dim)
         self._z_eye = torch.eye(z_dim)
         self.Q_reg = Q_reg

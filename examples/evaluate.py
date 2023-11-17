@@ -45,6 +45,10 @@ def setup_model_optimizer_scheduler(
             K=config.K,
             decoder_type=config.decoder_type,
             dynamics_parameter_network=config.dynamics_parameter_network,
+            init_transition_reg_weight=0.1,
+            init_observation_reg_weight=0.1,
+            init_noise_scale=0.1,
+            learn_noise_covariance=True,
         )
         .to(dtype=dtype)
         .to(device)
@@ -100,6 +104,7 @@ def evaluate(config: EvaluationConfig) -> None:
         device=device,
         dtype=dtype,
         use_wandb=False,
+        show_progress=True,
     )
 
 
@@ -134,8 +139,14 @@ def parse_args() -> EvaluationConfig:
     env_group.add_argument(
         "--num_evaluations",
         type=int,
-        default=1,
-        help="Total number of separate evaluations to be conducted",
+        default=5,
+        help="Total number of data used for evaluation",
+    )
+    env_group.add_argument(
+        "--num_videos",
+        type=int,
+        default=5,
+        help="Number of videos to be generated for each evaluation. Must be less than or equal to num_evaluations",
     )
 
     data_group = parser.add_argument_group("Data settings")
@@ -196,12 +207,18 @@ def parse_args() -> EvaluationConfig:
 
     args = parser.parse_args()
 
+    if args.num_videos > args.num_evaluations:
+        raise ValueError(
+            f"Number of videos to be generated ({args.num_videos}) must be less than or equal to num_evaluations ({args.num_evaluations})"
+        )
+
     return EvaluationConfig(
         device=args.device,
         dtype=args.dtype,
         checkpoint_dir=args.checkpoint_dir,
         epoch=args.epoch,
         num_evaluations=args.num_evaluations,
+        num_videos=args.num_videos,
         data_root_dir=args.data_root_dir,
         batch_operation=args.batch_operation,
         sequence_operation=args.sequence_operation,

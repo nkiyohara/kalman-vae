@@ -50,7 +50,8 @@ python evaluate.py \
     --dtype "float64" \
     --checkpoint_dir "$checkpoint_directory" \
     --epoch $epoch \
-    --num_evaluations 5 \
+    --num_evaluations 128 \
+    --num_videos 10 \
     --data_root_dir "../kvae/bouncing_ball/datasets/bouncing_ball" \
     --batch_operation "mean" \
     --sequence_operation "mean" \

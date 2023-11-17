@@ -21,6 +21,10 @@ class KalmanVariationalAutoencoder(nn.Module):
         a_dim,
         z_dim,
         K,
+        init_transition_reg_weight: float,
+        init_observation_reg_weight: float,
+        learn_noise_covariance: bool,
+        init_noise_scale: float,
         dynamics_parameter_network: Literal["mlp", "lstm"],
         decoder_type: Literal["gaussian", "bernoulli"] = "gaussian",
     ):
@@ -37,6 +41,10 @@ class KalmanVariationalAutoencoder(nn.Module):
             z_dim=z_dim,
             K=K,
             dynamics_parameter_network=dynamics_parameter_network,
+            init_transition_reg_weight=init_transition_reg_weight,
+            init_observation_reg_weight=init_observation_reg_weight,
+            learn_noise_covariance=learn_noise_covariance,
+            init_noise_scale=init_noise_scale,
         )
         self.a_dim = a_dim
         self.z_dim = z_dim

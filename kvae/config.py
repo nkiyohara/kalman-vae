@@ -32,7 +32,11 @@ class TrainingConfig(NamedTuple):
     regularization_weight: float  # Weight for regularization loss
     kalman_weight: float  # Weight for Kalman loss
     kl_weight: float  # Weight for KL loss (when using VAE)
+    init_transition_reg_weight: float  # Weight for regularization of initial transition matrix
+    init_observation_reg_weight: float  # Weight for regularization of initial observation matrix
     symmetrize_covariance: bool  # Whether to symmetrize the covariance matrix
+    learn_noise_covariance: bool  # Whether to learn the noise covariance matrix
+    initial_noise_scale: float  # Initial noise scale
 
     # Training Settings - Parameters related to training
     epochs: int  # Number of training epochs
@@ -56,6 +60,7 @@ class EvaluationConfig(NamedTuple):
     checkpoint_dir: str  # Directory for loading model checkpoints
     epoch: int  # Specific epoch of the model to be evaluated
     num_evaluations: int  # Total number of separate evaluations to be conducted
+    num_videos: int  # Number of videos to be used in each evaluation. Must be <= num_evaluations
     dynamics_parameter_network: Literal[
         "mlp", "lstm"
     ]  # Type of dynamics parameter network

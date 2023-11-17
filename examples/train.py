@@ -7,10 +7,10 @@ import numpy as np
 import torch
 import torch.optim as optim
 import torch.optim.lr_scheduler as lr_scheduler
+import wandb
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-import wandb
 from kvae.bouncing_ball.dataloaders.bouncing_data import BouncingBallDataLoader
 from kvae.config import TrainingConfig
 from kvae.evaluation import evaluate
@@ -62,10 +62,16 @@ def setup_model_optimizer_scheduler(
             K=config.K,
             decoder_type=config.decoder_type,
             dynamics_parameter_network=config.dynamics_parameter_network,
+            learn_noise_covariance=config.learn_noise_covariance,
+            init_noise_scale=config.initial_noise_scale,
+            init_transition_reg_weight=config.init_transition_reg_weight,
+            init_observation_reg_weight=config.init_observation_reg_weight,
         )
         .to(dtype=dtype)
         .to(device)
     )
+    kvae.state_space_model.mat_Q = torch.eye(config.z_dim, dtype=dtype).to(device)
+    kvae.state_space_model.mat_R = torch.eye(config.a_dim, dtype=dtype).to(device)
 
     optimizer = optim.Adam(kvae.parameters(), lr=config.learning_rate)
     scheduler = lr_scheduler.ExponentialLR(optimizer, gamma=config.learning_rate_decay)
@@ -332,6 +338,30 @@ def parse_args() -> TrainingConfig:
         default=0.0,
         help="Weight for KL loss (when training VAE individually)",
     )
+    model_group.add_argument(
+        "--learn_noise_covariance",
+        type=bool,
+        default=False,
+        help="Learn the noise covariance matrix",
+    )
+    model_group.add_argument(
+        "--initial_noise_scale",
+        type=float,
+        default=1.0,
+        help="Initial noise scale",
+    )
+    model_group.add_argument(
+        "--init_transition_reg_weight",
+        type=float,
+        default=0.9,
+        help="Weight for regularization of initial transition matrix",
+    )
+    model_group.add_argument(
+        "--init_observation_reg_weight",
+        type=float,
+        default=0.1,
+        help="Weight for regularization of initial observation matrix",
+    )
 
     train_group = parser.add_argument_group("Training settings")
     train_group.add_argument(
@@ -415,6 +445,10 @@ def parse_args() -> TrainingConfig:
         regularization_weight=args.regularization_weight,
         kalman_weight=args.kalman_weight,
         kl_weight=args.kl_weight,
+        learn_noise_covariance=args.learn_noise_covariance,
+        initial_noise_scale=args.initial_noise_scale,
+        init_transition_reg_weight=args.init_transition_reg_weight,
+        init_observation_reg_weight=args.init_observation_reg_weight,
         symmetrize_covariance=args.symmetrize_covariance,
         epochs=args.epochs,
         warmup_epochs=args.warmup_epochs,

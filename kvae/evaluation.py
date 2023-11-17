@@ -1,3 +1,4 @@
+import logging
 import os
 from typing import Optional
 
@@ -6,12 +7,15 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import torch
+import wandb
 from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 from matplotlib.colors import LinearSegmentedColormap
+from tqdm import tqdm
 
-import wandb
 from kvae.kalman_vae import KalmanVariationalAutoencoder
 from kvae.sample_control import SampleControl
+
+logger = logging.getLogger(__name__)
 
 
 def create_continuous_mask(seq_length, mask_length, batch_size, device, dtype):
@@ -45,8 +49,11 @@ def evaluate(
     epoch: int,
     dtype: torch.dtype,
     device: torch.device,
+    num_videos: int = 3,
     use_wandb: bool = True,
+    show_progress: bool = False,
 ):
+    logger.info("Evaluating model on random masking...")
     random_masking = evaluate_random_masking(
         dataloader=dataloader,
         kvae=kvae,
@@ -54,6 +61,7 @@ def evaluate(
         dtype=dtype,
         device=device,
     )
+    logger.info("Evaluating model on continuous masking...")
     continuous_masking = evaluate_continuous_masking(
         dataloader=dataloader,
         kvae=kvae,
@@ -66,6 +74,7 @@ def evaluate(
     random_masking.to_csv(os.path.join(table_directory, "random_masking.csv"))
     continuous_masking.to_csv(os.path.join(table_directory, "continuous_masking.csv"))
 
+    logger.info("Logging videos...")
     log_continuous_masking_video(
         dataloader=dataloader,
         kvae=kvae,
@@ -74,7 +83,9 @@ def evaluate(
         device=device,
         video_directory=os.path.join(checkpoint_dir, "videos", f"epoch_{epoch}"),
         metadata={"epoch": epoch},
+        num_videos=num_videos,
         use_wandb=use_wandb,
+        show_progress=show_progress,
     )
 
     return random_masking, continuous_masking
@@ -116,7 +127,6 @@ def evaluate_random_masking(
             .numpy()
             .tolist()
         )
-
         smoothed_images = kvae.decoder(info["as_resampled"].view(-1, 2)).mean.view(
             seq_length, batch_size, image_channels, *image_size
         )
@@ -205,14 +215,17 @@ def log_continuous_masking_video(
     dtype: torch.dtype,
     device: torch.device,
     use_wandb: bool,
+    num_videos: int,
     metadata: Optional[dict] = None,
-    num_videos: int = 3,
+    show_progress: bool = False,
 ):
     batch = next(iter(dataloader))
     batch = (batch > 0.5).to(dtype=dtype, device=device)
     seq_length, batch_size, image_channels, *image_size = batch.shape
 
     mask_lengths = [10, 20, 30, 40]
+    if show_progress:
+        mask_lengths = tqdm(mask_lengths)
     for mask_length in mask_lengths:
         mask = create_continuous_mask(
             seq_length=seq_length,
