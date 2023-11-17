@@ -406,19 +406,13 @@ def write_trajectory_video(
                 zorder=10,
             )
 
-        axes[2].plot(
-            (observation_mask.unsqueeze(-1) * info["as"])[:, idx, 0]
-            .cpu()
-            .detach()
-            .numpy(),
-            (observation_mask.unsqueeze(-1) * info["as"])[:, idx, 1]
-            .cpu()
-            .detach()
-            .numpy(),
-            "s",
-            color="black",
-            label="Observed",
-        )
+        as_values = info["as"].cpu().detach().numpy()
+        mask_values = observation_mask.cpu().detach().numpy()
+
+        selected_x = as_values[:, idx, 0][mask_values[:, idx] == 1]
+        selected_y = as_values[:, idx, 1][mask_values[:, idx] == 1]
+
+        axes[2].plot(selected_x, selected_y, "s", color="black", label="Observed")
 
         axes[3].bar(
             [str(i) for i in range(kvae.state_space_model.K)],
