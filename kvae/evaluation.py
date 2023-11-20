@@ -1,15 +1,15 @@
 import logging
 import os
+import tempfile
 from typing import Optional
 
-import cv2
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import torch
 import wandb
-from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 from matplotlib.colors import LinearSegmentedColormap
+from moviepy.editor import ImageSequenceClip
 from tqdm import tqdm
 
 from kvae.kalman_vae import KalmanVariationalAutoencoder
@@ -322,119 +322,115 @@ def write_trajectory_video(
 
     idx = 0
     cmap = plt.get_cmap("tab10")
-
-    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
     frame_size = (1600, 400)
     os.makedirs(os.path.dirname(filename), exist_ok=True)
-    video = cv2.VideoWriter(filename, fourcc, fps, frame_size)
 
-    for step, (image) in enumerate((data)):
-        fig, axes = plt.subplots(
-            figsize=(frame_size[0] / 100, frame_size[1] / 100), nrows=1, ncols=4
-        )
-        fig.suptitle(f"$t = {step}$")
+    frame_paths = []
+    with tempfile.TemporaryDirectory() as tmpdirname:
+        for step, (image) in enumerate((data)):
+            fig, axes = plt.subplots(
+                figsize=(frame_size[0] / 100, frame_size[1] / 100), nrows=1, ncols=4
+            )
+            fig.suptitle(f"$t = {step}$")
 
-        image = (image > 0.5).cpu().float().detach().numpy()
-        red_grad = LinearSegmentedColormap.from_list(
-            "red_grad", [(1, 1, 1), (1, 0, 0)], N=256
-        )
-        black_grad = LinearSegmentedColormap.from_list(
-            "black_grad", [(1, 1, 1), (0, 0, 0)], N=256
-        )
-
-        axes[0].imshow(
-            image[idx][channel],
-            vmin=0,
-            vmax=1,
-            cmap=red_grad,
-            aspect="equal",
-            alpha=0.5,
-        )
-        axes[0].imshow(
-            filtered_images[step, idx, 0],
-            vmin=0,
-            vmax=1,
-            cmap=black_grad,
-            aspect="equal",
-            alpha=0.5,
-        )
-
-        axes[1].imshow(
-            image[idx][0], vmin=0, vmax=1, cmap=red_grad, aspect="equal", alpha=0.5
-        )
-        axes[1].imshow(
-            smoothed_images[step, idx, 0],
-            vmin=0,
-            vmax=1,
-            cmap=black_grad,
-            aspect="equal",
-            alpha=0.5,
-        )
-
-        axes[2].plot(
-            info["as"][:, idx, 0].cpu().detach().numpy(),
-            info["as"][:, idx, 1].cpu().detach().numpy(),
-            ".-",
-            color=cmap(0),
-            label="Encoded",
-        )
-
-        axes[2].plot(
-            info["filter_as"][:, idx, 0].cpu().detach().numpy(),
-            info["filter_as"][:, idx, 1].cpu().detach().numpy(),
-            ".-",
-            color=cmap(1),
-            label="Filtered",
-        )
-
-        axes[2].plot(
-            info["as_resampled"][:, idx, 0].cpu().detach().numpy(),
-            info["as_resampled"][:, idx, 1].cpu().detach().numpy(),
-            ".-",
-            color=cmap(2),
-            label="Smoothed",
-        )
-
-        for key in ("as", "filter_as", "as_resampled"):
-            axes[2].plot(
-                info[key][step, idx, 0].cpu().detach().numpy(),
-                info[key][step, idx, 1].cpu().detach().numpy(),
-                "o",
-                markersize=8,
-                color="red",
-                linestyle="none",
-                zorder=10,
+            image = (image > 0.5).cpu().float().detach().numpy()
+            red_grad = LinearSegmentedColormap.from_list(
+                "red_grad", [(1, 1, 1), (1, 0, 0)], N=256
+            )
+            black_grad = LinearSegmentedColormap.from_list(
+                "black_grad", [(1, 1, 1), (0, 0, 0)], N=256
             )
 
-        as_values = info["as"].cpu().detach().numpy()
-        mask_values = observation_mask.cpu().detach().numpy()
+            axes[0].imshow(
+                image[idx][channel],
+                vmin=0,
+                vmax=1,
+                cmap=red_grad,
+                aspect="equal",
+                alpha=0.5,
+            )
+            axes[0].imshow(
+                filtered_images[step, idx, 0],
+                vmin=0,
+                vmax=1,
+                cmap=black_grad,
+                aspect="equal",
+                alpha=0.5,
+            )
 
-        selected_x = as_values[:, idx, 0][mask_values[:, idx] == 1]
-        selected_y = as_values[:, idx, 1][mask_values[:, idx] == 1]
+            axes[1].imshow(
+                image[idx][0], vmin=0, vmax=1, cmap=red_grad, aspect="equal", alpha=0.5
+            )
+            axes[1].imshow(
+                smoothed_images[step, idx, 0],
+                vmin=0,
+                vmax=1,
+                cmap=black_grad,
+                aspect="equal",
+                alpha=0.5,
+            )
 
-        axes[2].plot(selected_x, selected_y, "s", color="black", label="Observed")
+            axes[2].plot(
+                info["as"][:, idx, 0].cpu().detach().numpy(),
+                info["as"][:, idx, 1].cpu().detach().numpy(),
+                ".-",
+                color=cmap(0),
+                label="Encoded",
+            )
 
-        axes[3].bar(
-            [str(i) for i in range(kvae.state_space_model.K)],
-            info["weights"][step, idx].cpu().detach().numpy(),
-        )
-        axes[3].set_ylim(0, 1)
+            axes[2].plot(
+                info["filter_as"][:, idx, 0].cpu().detach().numpy(),
+                info["filter_as"][:, idx, 1].cpu().detach().numpy(),
+                ".-",
+                color=cmap(1),
+                label="Filtered",
+            )
 
-        axes[0].set_title("from filtered $\\mathbf{z}$")
-        axes[1].set_title("from smoothed $\\mathbf{z}$")
-        axes[2].set_title("$\\mathbf{a}$ space")
-        axes[3].set_title("Mixture weights")
-        axes[2].legend()
-        axes[2].grid()
+            axes[2].plot(
+                info["as_resampled"][:, idx, 0].cpu().detach().numpy(),
+                info["as_resampled"][:, idx, 1].cpu().detach().numpy(),
+                ".-",
+                color=cmap(2),
+                label="Smoothed",
+            )
 
-        plt.tight_layout()
+            for key in ("as", "filter_as", "as_resampled"):
+                axes[2].plot(
+                    info[key][step, idx, 0].cpu().detach().numpy(),
+                    info[key][step, idx, 1].cpu().detach().numpy(),
+                    "o",
+                    markersize=8,
+                    color="red",
+                    linestyle="none",
+                    zorder=10,
+                )
 
-        canvas = FigureCanvas(fig)
-        canvas.draw()
-        matplotlib_image = np.array(canvas.renderer.buffer_rgba())
-        opencv_image = cv2.cvtColor(matplotlib_image, cv2.COLOR_RGBA2BGR)
-        video.write(opencv_image)
+            as_values = info["as"].cpu().detach().numpy()
+            mask_values = observation_mask.cpu().detach().numpy()
 
-        plt.close(fig)
+            selected_x = as_values[:, idx, 0][mask_values[:, idx] == 1]
+            selected_y = as_values[:, idx, 1][mask_values[:, idx] == 1]
 
-    video.release()
+            axes[2].plot(selected_x, selected_y, "s", color="black", label="Observed")
+
+            axes[3].bar(
+                [str(i) for i in range(kvae.state_space_model.K)],
+                info["weights"][step, idx].cpu().detach().numpy(),
+            )
+            axes[3].set_ylim(0, 1)
+
+            axes[0].set_title("from filtered $\\mathbf{z}$")
+            axes[1].set_title("from smoothed $\\mathbf{z}$")
+            axes[2].set_title("$\\mathbf{a}$ space")
+            axes[3].set_title("Mixture weights")
+            axes[2].legend()
+            axes[2].grid()
+
+            plt.tight_layout()
+            frame_path = os.path.join(tmpdirname, f"frame_{step:04d}.png")
+            fig.savefig(frame_path, dpi=100)
+            frame_paths.append(frame_path)
+            plt.close(fig)
+
+        video_clip = ImageSequenceClip(frame_paths, fps=fps)
+        video_clip.write_videofile(filename, codec="libx264")
