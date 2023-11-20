@@ -58,12 +58,11 @@ class StateSpaceModel(nn.Module):
         mat_R = init_noise_scale * torch.eye(a_dim)
         self._mat_Q_L = nn.Parameter(
             torch.linalg.cholesky((mat_Q + mat_Q.T) / 2.0),
-            requires_grad=learn_noise_covariance,
         )
         self._mat_R_L = nn.Parameter(
             torch.linalg.cholesky((mat_R + mat_R.T) / 2.0),
-            requires_grad=learn_noise_covariance,
         )
+        self.learn_noise_covariance = learn_noise_covariance
         self._a_eye = torch.eye(a_dim)
         self._z_eye = torch.eye(z_dim)
         self.Q_reg = Q_reg
@@ -116,6 +115,8 @@ class StateSpaceModel(nn.Module):
         matrix = self._mat_Q_L @ self._mat_Q_L.T + self._z_eye * self.Q_reg
         if self.fix_matrices:
             matrix = matrix.detach()
+        if not self.learn_noise_covariance:
+            matrix = matrix.detach()
         return matrix
 
     @property
@@ -123,6 +124,8 @@ class StateSpaceModel(nn.Module):
         # shape: (a_dim, a_dim)
         matrix = self._mat_R_L @ self._mat_R_L.T + self._a_eye * self.R_reg
         if self.fix_matrices:
+            matrix = matrix.detach()
+        if not self.learn_noise_covariance:
             matrix = matrix.detach()
         return matrix
 

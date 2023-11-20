@@ -21,7 +21,7 @@ python train.py \
     --regularization_weight 0.3 \
     --kalman_weight 1.0 \
     --kl_weight 0.0 \
-    --initial_noise_scale 1.0 \
+    --initial_noise_scale 0.01 \
     --init_transition_reg_weight 0.9 \
     --init_observation_reg_weight 0.1 \
     --epochs 100 \
